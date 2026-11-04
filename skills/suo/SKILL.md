@@ -1,7 +1,7 @@
 ---
 name: suo
 description: Define current repository product Units, their dependencies and honest implementation coverage; collaborate through Git with deterministic validation.
-version: 0.9.0
+version: 0.10.0
 compatibility: "Requires Node.js 22.18+ and the matching suo CLI."
 ---
 
@@ -9,7 +9,7 @@ compatibility: "Requires Node.js 22.18+ and the matching suo CLI."
 
 Suo describes the checked-out commit's current product definition and implementation coverage. Git owns history. A Unit can contain Units at any depth; module and feature are labels, not fixed layers. Use a bounded deliverable boundary when useful, not one Unit per sentence or decision. Current normative decisions, alternatives and unresolved questions stay attached to Units. An intended assignee is an expectation, never evidence that the person accepted the work.
 
-Before mutations, run `suo --version` from the selected runtime and match this skill version. Native plugin instructions and the separately installed Node runtime are different installations. Follow [native distribution](https://github.com/stevenlyd/suo/blob/main/docs/distribution.md) at the reviewed installed revision. Do not silently install a missing executable, copy skill files into managed caches or claim a host update updated the runtime/current session.
+Before mutations, run `suo --version` from the selected runtime and match this skill version. When the loaded Skill's directory or plugin package is known, `suo --root PROJECT writer check --skill PATH` compares its Skill digest as data, without running anything from `PATH` (plugin caches may lack runtime dependencies); `matches: false` blocks mutations. Native plugin instructions and the separately installed Node runtime are different installations. Follow [native distribution](https://github.com/stevenlyd/suo/blob/main/docs/distribution.md) at the reviewed installed revision. Do not silently install a missing executable, copy skill files into managed caches or claim a host update updated the runtime/current session.
 
 ## Writer provenance
 
@@ -35,7 +35,7 @@ For a reviewed whole-snapshot update, write `{ "expectedToken": "OBSERVED_TOKEN"
 
 `record FILE --yes` accepts exactly `expectedToken`, `unitId`, `state`, `coverage`, and `gaps`. States are unknown, not_started, in_progress, implemented. Coverage maps criterion IDs to repository paths, optional TS/JS symbols and source/test kinds. The command binds the declaration to current definition/input fingerprints. Review actual code before declaring implementation; path existence, type checks and hashes do not prove semantics. A missing realization is unknown, not “not implemented.” Do not rebind stale declarations mechanically.
 
-Inspect applicability after code, configuration, lockfile, dependency or definition changes. Stale/unknown mappings cannot support a current completion claim, even if a prior receipt said accepted. All source/config/new-file inputs are included conservatively except explicitly declared non-runtime paths and Suo authority/views. Review exclusions; do not hide indirect runtime inputs. LFS/gitlink or other unavailable inputs remain unknown. Source mappings cannot point into exclusions.
+Inspect applicability after code, configuration, lockfile, dependency or definition changes. For a stale declaration, `suo --root PROJECT explain UNIT_ID` uses Git history to name the binding commit, whether its base is exactly reproduced, changed own-definition fields and the added/removed/modified/excluded/included input paths; review those changes before any rebinding. An inexact or missing base widens, not narrows, the review. Stale/unknown mappings cannot support a current completion claim, even if a prior receipt said accepted. All source/config/new-file inputs are included conservatively except explicitly declared non-runtime paths and Suo authority/views. Review exclusions; do not hide indirect runtime inputs. LFS/gitlink or other unavailable inputs remain unknown. Source mappings cannot point into exclusions.
 
 Suo stores no current CI result, PR status, other-branch inclusion, deployment status or external execution approval. Committing a provider observation does not turn it into a current-code fact. Persist versioned test/check requirements and normative product decisions; consuming engineering workflows run checks and query providers/live manifests at use time. Product scope selection, declared implementation, behavioral verification, product acceptance and deployment authorization remain distinct.
 

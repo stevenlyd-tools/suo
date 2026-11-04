@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile, readdir, lstat, writeFile, rename, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { safePath, withProjectLock } from './project-files.js';
 import { readRepository, loadRepositoryUnits } from './unit-checkout.js';
@@ -44,14 +44,42 @@ async function directoryDigest(root, directory, javascriptOnly = false) {
         throw new Error('empty writer identity directory');
     return hash(JSON.stringify(files.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)));
 }
-export async function currentWriter() {
-    const root = fileURLToPath(new URL('../', import.meta.url));
-    const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+async function packageVersion(root) {
+    const pkg = JSON.parse(await readFile(await safePath(root, 'package.json'), 'utf8'));
     if (pkg.name !== '@stevenlyd/suo')
         throw new Error('unexpected Suo package identity');
-    const writer = { schemaVersion: 1, tool: 'suo', version: pkg.version, skillDigest: await directoryDigest(root, 'skills/suo'), runtimeDigest: await directoryDigest(root, 'dist', true) };
+    return pkg.version;
+}
+async function packageWriter(root) {
+    const writer = { schemaVersion: 1, tool: 'suo', version: await packageVersion(root), skillDigest: await directoryDigest(root, 'skills/suo'), runtimeDigest: await directoryDigest(root, 'dist', true) };
     validateWriter(writer);
     return writer;
+}
+export const currentWriter = () => packageWriter(fileURLToPath(new URL('../', import.meta.url)));
+/** Skill identity of a package root or bare Skill directory, read as data: nothing under `path` is imported or executed. */
+export async function skillIdentity(path) {
+    const absolute = resolve(path);
+    let skill;
+    try {
+        await packageVersion(absolute);
+        skill = join(absolute, 'skills/suo');
+    }
+    catch (error) {
+        if (error.code !== 'ENOENT')
+            throw error;
+        skill = absolute;
+    }
+    const text = await readFile(await safePath(dirname(skill), `${basename(skill)}/SKILL.md`), 'utf8');
+    const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(text)?.[1] ?? '', version = /^version: (.+)$/m.exec(frontmatter)?.[1];
+    if (!/^name: suo$/m.test(frontmatter) || !version)
+        throw new Error('not a Suo Skill: expected name and version frontmatter');
+    compareWriterVersions(version, version);
+    return { version, skillDigest: await directoryDigest(dirname(skill), basename(skill)) };
+}
+/** Parity of a loaded Skill (for example a native plugin cache without dependencies) with this executing runtime. */
+export async function checkSkill(path) {
+    const runtime = await currentWriter(), skill = await skillIdentity(path);
+    return { path: resolve(path), ...skill, matches: skill.version === runtime.version && skill.skillDigest === runtime.skillDigest };
 }
 export async function readWriter(root, path = writerPath) {
     const actual = await safePath(root, path);
@@ -80,9 +108,9 @@ export function requireCompatibleWriter(installed, recorded) {
         throw new Error('Suo same-version package identity differs; investigate instead of overwriting');
     return comparison ? 'newer' : 'same';
 }
-export async function checkWriter(root) {
+export async function checkWriter(root, skillPath) {
     const installed = await currentWriter(), recorded = await readWriter(root);
-    return { installed, recorded, compatibility: requireCompatibleWriter(installed, recorded), path: writerPath, notice: 'Last-writer provenance, not latest-version policy, host-session attestation or migration authorization.' };
+    return { installed, recorded, ...(skillPath === undefined ? {} : { skill: await checkSkill(skillPath) }), compatibility: requireCompatibleWriter(installed, recorded), path: writerPath, notice: 'Last-writer provenance, not latest-version policy, host-session attestation or migration authorization.' };
 }
 export const writerContents = (writer) => JSON.stringify(writer, null, 2) + '\n';
 /** For Skill edits or external renderers. No product replacement, Git commit or other tool record. */
