@@ -8,6 +8,25 @@ See [release process](https://github.com/stevenlyd/suo/blob/main/docs/releases.m
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-04
+
+### Added
+
+- Read-only `explain UNIT_ID [--depth N]` names the commit that introduced an implementation binding, whether that commit or its parent exactly reproduces the recorded input fingerprint, changed own-definition fields and decisions, input-policy changes and added/removed/modified/excluded/included input paths. Git history is the only source; nothing is stored or rebound ([#18](https://github.com/stevenlyd/suo/issues/18)).
+- `writer check --skill PATH` compares the version and Skill digest of a package root or bare Skill directory with the executing runtime by reading files only, so dependency-free plugin caches can be checked; a mismatch exits non-zero ([#19](https://github.com/stevenlyd/suo/issues/19)).
+
+### Changed
+
+- The Skill directs stale-declaration review through `explain` and Skill/runtime parity through `writer check --skill`.
+
+### Breaking changes
+
+- None. Schema 5 and existing command output are unchanged; `writer check` output gains `skill` only when `--skill` is passed.
+
+### Migration
+
+- No data migration. Select the matching 0.10.0 Skill and runtime together; existing writer records from 0.9.0 report `newer`.
+
 ## [0.9.0] - 2026-10-24
 
 ### Added

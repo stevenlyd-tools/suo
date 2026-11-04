@@ -16,12 +16,15 @@ const hash = (b: Buffer) => createHash('sha256').update(b).digest('hex')
 export interface RepositorySnapshot { context: CheckoutContext; contents: Map<string, Buffer>; token: string }
 const git = (root: string, args: string[], input?: string) => execFileSync('git', ['-C', root, ...args], { maxBuffer: 256 * 1024 * 1024, ...(input === undefined ? {} : { input }) })
 /** Read one explicit Git tree/index or a labelled working-tree candidate. No fetch. */
-export async function readRepository(root: string, target: 'commit' | 'index' | 'working-tree' = 'commit', ref = 'HEAD'): Promise<RepositorySnapshot> {
+export async function readRepository(root: string, target: 'commit' | 'index' | 'working-tree' = 'commit', ref = 'HEAD'): Promise<RepositorySnapshot> { return readCheckout(root, target, ref, false) }
+/** Only `suo/` of one commit: enough to load its authority, never a binding input context. */
+export async function readCommitAuthority(root: string, ref: string): Promise<RepositorySnapshot> { return readCheckout(root, 'commit', ref, true) }
+async function readCheckout(root: string, target: 'commit' | 'index' | 'working-tree', ref: string, authorityOnly: boolean): Promise<RepositorySnapshot> {
   if (target === 'working-tree') await assertNoPendingUnitWrite(root)
   let rows: Array<{ path: string; mode: CodeEntry['mode']; oid?: string }> = [], identity: string
   if (target === 'commit') {
     identity = git(root, ['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`]).toString().trim()
-    rows = git(root, ['ls-tree', '-rz', '--full-tree', identity]).toString().split('\0').filter(Boolean).map(line => { const tab = line.indexOf('\t'), [mode, , oid] = line.slice(0,tab).split(' '); return { path: line.slice(tab+1), mode: mode as CodeEntry['mode'], oid: oid! } })
+    rows = git(root, ['ls-tree', '-rz', '--full-tree', identity, ...(authorityOnly ? ['--', 'suo'] : [])]).toString().split('\0').filter(Boolean).map(line => { const tab = line.indexOf('\t'), [mode, , oid] = line.slice(0,tab).split(' '); return { path: line.slice(tab+1), mode: mode as CodeEntry['mode'], oid: oid! } })
   } else if (target === 'index') {
     rows = git(root, ['ls-files', '--stage', '-z']).toString().split('\0').filter(Boolean).map(line => { const tab = line.indexOf('\t'), [mode, oid, stage] = line.slice(0,tab).split(' '); if (stage !== '0') throw new Error('unmerged index'); return { path: line.slice(tab+1), mode: mode as CodeEntry['mode'], oid: oid! } }); identity = ''
   } else {

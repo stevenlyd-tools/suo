@@ -108,12 +108,18 @@ export function inputIdentity(s, context) {
             throw new Error('invalid or duplicate input entry');
         seen.add(entry.path);
     }
-    const excluded = (path) => path.startsWith('suo/') || path.startsWith('docs/suo/') || s.inputPolicy.nonRuntimePaths.some(p => path === p || path.startsWith(`${p}/`));
+    const excluded = excludedInput(s);
     for (const unit of s.units)
         for (const ref of unit.implementation.coverage)
             if (excluded(ref.path))
                 throw new Error(`coverage input excluded or self-referential: ${ref.path}`);
-    return digest({ policy: s.inputPolicy, entries: context.entries.filter(e => !excluded(e.path)).map(({ symbols: _, ...entry }) => entry).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0) });
+    return digest({ policy: s.inputPolicy, entries: boundInputs(s, context) });
+}
+const excludedInput = (s) => (path) => path.startsWith('suo/') || path.startsWith('docs/suo/') || s.inputPolicy.nonRuntimePaths.some(p => path === p || path.startsWith(`${p}/`));
+/** The sorted entries an implementation binding fingerprints under this snapshot's input policy. */
+export function boundInputs(s, context) {
+    const excluded = excludedInput(s);
+    return context.entries.filter(e => !excluded(e.path)).map(({ symbols: _, ...entry }) => entry).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 }
 /** Pure projection: no clock, network, provider status or mutation. */
 export function inspectUnits(s, context) {

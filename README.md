@@ -79,7 +79,7 @@ suo --version
 suo --help
 ```
 
-Here, `suo` means the verified executable on your PATH; otherwise use its absolute path. Match its version to the loaded Skill before mutations. A catalog refresh does not prove that an installed plugin, running session or separate runtime has updated. Apply upgrades at a new session boundary and retain the previous runtime for recovery. Native plugin installation does not require publishing Suo to npm.
+Here, `suo` means the verified executable on your PATH; otherwise use its absolute path. Match its version to the loaded Skill before mutations. If you know where the host loaded the Skill (for example a plugin cache), `suo --root PROJECT writer check --skill PATH` compares that Skill's digest without executing anything there. A catalog refresh does not prove that an installed plugin, running session or separate runtime has updated. Apply upgrades at a new session boundary and retain the previous runtime for recovery. Native plugin installation does not require publishing Suo to npm.
 
 For existing projects using older schemas, read the [explicit schema-5 migration guide](docs/validation-upgrade.md) first. Installing a newer client does not convert project authority.
 
@@ -184,7 +184,7 @@ The same target options apply to `check`, `export`, `next` and `render`. `next` 
 
 After reviewing actual code, an agent can prepare a `record` envelope containing exactly `expectedToken`, `unitId`, `state`, `coverage` and `gaps`. Coverage maps criterion IDs to repository paths, optional TS/JS symbol names, and `source` or `test` kinds. Run `suo --root PROJECT record FILE --yes` only for the reviewed declaration.
 
-`record` binds the declaration to the observed definition and repository input fingerprints. Changed definitions, dependencies, source, configuration or lockfiles can make it stale. Relevant new candidate files count too. Reinspect and review the change before rebinding; substituting a new token is not a review.
+`record` binds the declaration to the observed definition and repository input fingerprints. Changed definitions, dependencies, source, configuration or lockfiles can make it stale. Relevant new candidate files count too. Reinspect and review the change before rebinding; substituting a new token is not a review. `suo --root PROJECT explain UNIT_ID [--depth N]` is the read-only aid for that review: it finds the first-parent commit that introduced the binding, reports whether that commit or its parent reproduces the recorded input fingerprint (`exact`), and lists changed own-definition fields, decisions, input-policy changes and changed input paths. Paths that still exist but changed bound status under a new policy are `excluded`/`included`. The output is guidance, never permission to rebind.
 
 A complete declared implementation needs source coverage for every criterion and own integration obligation, plus the required child scope. A missing declaration remains **unknown**. A null check policy remains **unresolved**, not an empty list of checks. Even a current, complete declaration does not prove correct behavior or user acceptance. See the [CLI end-to-end example](https://github.com/stevenlyd/suo/blob/main/test/cli-e2e.mjs) for a runnable record/inspect/stale-input exercise.
 

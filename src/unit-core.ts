@@ -65,9 +65,15 @@ export function inputIdentity(s: UnitSnapshot, context: CheckoutContext): string
   if (!(context.target === 'commit' ? /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/ : /^[a-f0-9]{64}$/).test(context.identity)) throw new Error('invalid checkout identity')
   const seen = new Set<string>()
   for (const entry of context.entries) { repositoryPath(entry.path); if (seen.has(entry.path) || !hex.test(entry.digest)) throw new Error('invalid or duplicate input entry'); seen.add(entry.path) }
-  const excluded = (path: string) => path.startsWith('suo/') || path.startsWith('docs/suo/') || s.inputPolicy.nonRuntimePaths.some(p => path === p || path.startsWith(`${p}/`))
+  const excluded = excludedInput(s)
   for (const unit of s.units) for (const ref of unit.implementation.coverage) if (excluded(ref.path)) throw new Error(`coverage input excluded or self-referential: ${ref.path}`)
-  return digest({ policy: s.inputPolicy, entries: context.entries.filter(e => !excluded(e.path)).map(({symbols: _, ...entry}) => entry).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0) })
+  return digest({ policy: s.inputPolicy, entries: boundInputs(s, context) })
+}
+const excludedInput = (s: UnitSnapshot) => (path: string) => path.startsWith('suo/') || path.startsWith('docs/suo/') || s.inputPolicy.nonRuntimePaths.some(p => path === p || path.startsWith(`${p}/`))
+/** The sorted entries an implementation binding fingerprints under this snapshot's input policy. */
+export function boundInputs(s: UnitSnapshot, context: CheckoutContext): Array<Omit<CheckoutContext['entries'][number], 'symbols'>> {
+  const excluded = excludedInput(s)
+  return context.entries.filter(e => !excluded(e.path)).map(({symbols: _, ...entry}) => entry).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
 }
 /** Pure projection: no clock, network, provider status or mutation. */
 export function inspectUnits(s: UnitSnapshot, context: CheckoutContext): { schemaVersion: 5; target: CheckoutContext['target']; identity: string; inputDigest: string; units: UnitProjection[]; verification: string } {

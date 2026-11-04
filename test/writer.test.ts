@@ -1,9 +1,9 @@
 import { it, expect } from 'vitest'
-import { mkdtemp, readFile, writeFile, mkdir, rm, symlink } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile, mkdir, rm, symlink, cp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { checkWriter, currentWriter, requireCompatibleWriter, compareWriterVersions, recordWriter, writerContents } from '../src/writer.js'
+import { checkSkill, checkWriter, currentWriter, requireCompatibleWriter, compareWriterVersions, recordWriter, writerContents } from '../src/writer.js'
 import { createUnitTemplate, saveUnits } from '../src/unit-store.js'
 import { readRepository, loadRepositoryUnits } from '../src/unit-checkout.js'
 import type { UnitSnapshot } from '../src/unit-model.js'
@@ -40,4 +40,20 @@ it('a future writer blocks replacement and malformed/symlink metadata is never o
 })
 it('checking unrecorded history does not create a writer or introduce another tool dependency',async()=>{
  const root=await fixture();try{expect((await checkWriter(root)).recorded).toBe(null);await expect(readFile(join(root,'suo/writer.json'))).rejects.toMatchObject({code:'ENOENT'});await mkdir(join(root,'suo'));await writeFile(join(root,'suo/product.suo.ts'),'invalid');await expect(recordWriter(root)).rejects.toThrow();await expect(readFile(join(root,'suo/writer.json'))).rejects.toMatchObject({code:'ENOENT'})}finally{await rm(root,{recursive:true,force:true})}
+})
+it('checks a Skill package or directory as data, including dependency-free plugin caches',async()=>{
+ const plugin=await mkdtemp(join(tmpdir(),'suo-plugin-'));try{
+  expect((await checkSkill('.')).matches).toBe(true);expect((await checkSkill('skills/suo')).matches).toBe(true)
+  // A plugin cache: package identity and Skill, no node_modules, and a runtime that must never run.
+  await cp('skills',join(plugin,'skills'),{recursive:true});await writeFile(join(plugin,'package.json'),JSON.stringify({name:'@stevenlyd/suo',version:'0.0.0'}))
+  await mkdir(join(plugin,'dist'));await writeFile(join(plugin,'dist/cli.js'),`require('node:fs').writeFileSync(${JSON.stringify(join(plugin,'executed'))},'')`)
+  expect(await checkSkill(plugin)).toMatchObject({matches:true,version:(await currentWriter()).version,skillDigest:(await currentWriter()).skillDigest})
+  await expect(readFile(join(plugin,'executed'))).rejects.toMatchObject({code:'ENOENT'})
+  await writeFile(join(plugin,'skills/suo/SKILL.md'),(await readFile(join(plugin,'skills/suo/SKILL.md'),'utf8'))+'\nLocal edit\n')
+  expect((await checkSkill(plugin)).matches).toBe(false)
+  const root=await fixture();try{expect((await checkWriter(root,plugin)).skill?.matches).toBe(false);expect((await checkWriter(root)).skill).toBeUndefined()}finally{await rm(root,{recursive:true,force:true})}
+  await writeFile(join(plugin,'package.json'),JSON.stringify({name:'other'}));await expect(checkSkill(plugin)).rejects.toThrow(/package identity/)
+  await expect(checkSkill(join(plugin,'dist'))).rejects.toMatchObject({code:'ENOENT'})
+  await writeFile(join(plugin,'dist/SKILL.md'),'---\nname: other\nversion: 1.0.0\n---\n');await expect(checkSkill(join(plugin,'dist'))).rejects.toThrow(/not a Suo Skill/)
+ }finally{await rm(plugin,{recursive:true,force:true})}
 })

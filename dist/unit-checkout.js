@@ -14,13 +14,16 @@ import { loadUnits } from './unit-source.js';
 const hash = (b) => createHash('sha256').update(b).digest('hex');
 const git = (root, args, input) => execFileSync('git', ['-C', root, ...args], { maxBuffer: 256 * 1024 * 1024, ...(input === undefined ? {} : { input }) });
 /** Read one explicit Git tree/index or a labelled working-tree candidate. No fetch. */
-export async function readRepository(root, target = 'commit', ref = 'HEAD') {
+export async function readRepository(root, target = 'commit', ref = 'HEAD') { return readCheckout(root, target, ref, false); }
+/** Only `suo/` of one commit: enough to load its authority, never a binding input context. */
+export async function readCommitAuthority(root, ref) { return readCheckout(root, 'commit', ref, true); }
+async function readCheckout(root, target, ref, authorityOnly) {
     if (target === 'working-tree')
         await assertNoPendingUnitWrite(root);
     let rows = [], identity;
     if (target === 'commit') {
         identity = git(root, ['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`]).toString().trim();
-        rows = git(root, ['ls-tree', '-rz', '--full-tree', identity]).toString().split('\0').filter(Boolean).map(line => { const tab = line.indexOf('\t'), [mode, , oid] = line.slice(0, tab).split(' '); return { path: line.slice(tab + 1), mode: mode, oid: oid }; });
+        rows = git(root, ['ls-tree', '-rz', '--full-tree', identity, ...(authorityOnly ? ['--', 'suo'] : [])]).toString().split('\0').filter(Boolean).map(line => { const tab = line.indexOf('\t'), [mode, , oid] = line.slice(0, tab).split(' '); return { path: line.slice(tab + 1), mode: mode, oid: oid }; });
     }
     else if (target === 'index') {
         rows = git(root, ['ls-files', '--stage', '-z']).toString().split('\0').filter(Boolean).map(line => { const tab = line.indexOf('\t'), [mode, oid, stage] = line.slice(0, tab).split(' '); if (stage !== '0')

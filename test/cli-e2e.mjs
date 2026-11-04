@@ -16,6 +16,8 @@ try {
  await writeFile(envelope,JSON.stringify({expectedToken:current.expectedToken,unitId:'bounded',state:'implemented',coverage:[{criterionId:'app',path:'app.ts',symbol:'app',kind:'source'}],gaps:[]}));run('record',envelope,'--yes');current=JSON.parse(run('inspect','--target','working-tree'));assert.equal(current.units[0].implemented,true);assert.ok(current.units[0].verificationBlockers.includes('required check policy unresolved'));assert.ok(current.units[0].acceptanceBlockers.length)
  const before=await readFile(join(root,'suo/product.suo.ts'),'utf8');await writeFile(join(root,'app.ts'),'export const app = false\n');assert.throws(()=>run('record',envelope,'--yes'));assert.equal(await readFile(join(root,'suo/product.suo.ts'),'utf8'),before);assert.equal(JSON.parse(run('inspect','--target','working-tree')).units[0].applicability,'stale')
  git('add','.');git('commit','-m','Unit and code');assert.equal(JSON.parse(run('check')).units[0].applicability,'stale')
+ const explained=JSON.parse(run('explain','bounded'));assert.equal(explained.bindingCommit,git('rev-parse','HEAD').trim());assert.deepEqual(explained.inputs,{changed:true,base:{commit:git('rev-parse','HEAD^').trim(),exact:true},policyChanged:false,changes:[{path:'app.ts',change:'modified'}]})
+ assert.equal(JSON.parse(run('writer','check','--skill',resolve(cli,'../../skills/suo'))).skill.matches,true)
  }finally{await rm(envelope,{force:true})}
- console.log('Unit CLI E2E passed: isolated commit/worktree, typed roundtrip, coverage binding, null policy and atomic stale rejection')
+ console.log('Unit CLI E2E passed: isolated commit/worktree, typed roundtrip, coverage binding, null policy, atomic stale rejection, stale explanation and Skill parity')
 }finally{await rm(root,{recursive:true,force:true})}

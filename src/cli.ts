@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { readRepository, loadRepositoryUnits } from './unit-checkout.js'
 import { inspectUnits, validateUnits } from './unit-core.js'
+import { explainUnit } from './unit-explain.js'
 import { saveUnits, recoverUnits, createUnitTemplate } from './unit-store.js'
 import { assertShape, object, string, literals, array, nullable } from './unit-shape.js'
 import type { UnitSnapshot } from './unit-model.js'
@@ -16,8 +17,9 @@ async function main(){
  const root=resolve(option('--root',process.cwd())!),target=option('--target','commit'),ref=option('--ref','HEAD')!
  if(!['commit','index','working-tree'].includes(target!))throw new Error('target must be commit, index or working-tree')
  const command=args.shift()??'help'
- if(command==='help'||command==='--help'){console.log('suo --version\nsuo --root PROJECT [--target commit|index|working-tree] [--ref REF] inspect|check|export|next|render\nsuo --root PROJECT apply ENVELOPE.json --yes\nsuo --root PROJECT record ENVELOPE.json --yes\nsuo --root PROJECT recover\nsuo --root PROJECT writer check|record [--yes]\nsuo template DIRECTORY --title TITLE\nCommit inspection is read-only. Working-tree is an explicit candidate, never HEAD. External CI/deployment state is not persisted.');return}
- if(command==='writer'){const action=args.shift();if(action==='check'&&!args.length){emit(await checkWriter(root));return}if(action==='record'&&args.length===1&&args[0]==='--yes'){await recordWriter(root);emit({recorded:true,path:'suo/writer.json'});return}throw new Error('writer check or writer record --yes required')}
+ if(command==='help'||command==='--help'){console.log('suo --version\nsuo --root PROJECT [--target commit|index|working-tree] [--ref REF] inspect|check|export|next|render\nsuo --root PROJECT [--target commit|index|working-tree] [--ref REF] explain UNIT_ID [--depth N]\nsuo --root PROJECT apply ENVELOPE.json --yes\nsuo --root PROJECT record ENVELOPE.json --yes\nsuo --root PROJECT recover\nsuo --root PROJECT writer check [--skill SKILL_PACKAGE_OR_DIRECTORY]\nsuo --root PROJECT writer record --yes\nsuo template DIRECTORY --title TITLE\nCommit inspection is read-only. Working-tree is an explicit candidate, never HEAD. External CI/deployment state is not persisted.');return}
+ if(command==='writer'){const action=args.shift();if(action==='check'){const skill=option('--skill');if(args.length)throw new Error('unexpected writer check arguments');const result=await checkWriter(root,skill);emit(result);if(result.skill&&!result.skill.matches)process.exitCode=1;return}if(action==='record'&&args.length===1&&args[0]==='--yes'){await recordWriter(root);emit({recorded:true,path:'suo/writer.json'});return}throw new Error('writer check or writer record --yes required')}
+ if(command==='explain'){const depth=option('--depth','200')!,unitId=args.shift();if(!unitId||args.length||!/^[1-9]\d*$/.test(depth))throw new Error('explain requires UNIT_ID and an optional positive --depth');emit(await explainUnit(root,target as 'commit'|'index'|'working-tree',ref,unitId,Number(depth)));return}
  if(command==='recover'){if(args.length)throw new Error('unexpected recover arguments');await recoverUnits(root);emit({recovered:true});return}
  if(command==='template'){
   const destination=resolve(args.shift()??''),title=option('--title');if(!title||args.length)throw new Error('template requires destination and --title')
