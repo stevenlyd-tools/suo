@@ -8,6 +8,20 @@ See [release process](https://github.com/stevenlyd/suo/blob/main/docs/releases.m
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-10
+
+### Changed
+
+- The README gains a "Use with Duet" section: how Duet's prototype-to-main stages map onto Unit choice states and implementation coverage. Suo and Duet stay independent; neither requires the other.
+
+### Breaking changes
+
+- None. Documentation only; the runtime, schema and Skill instructions are unchanged.
+
+### Migration
+
+- None.
+
 ## [0.10.0] - 2026-11-04
 
 ### Added
