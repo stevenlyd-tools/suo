@@ -1,7 +1,7 @@
 ---
 name: suo
 description: Define current repository product Units, their dependencies and honest implementation coverage; collaborate through Git with deterministic validation.
-version: 0.10.0
+version: 0.10.1
 compatibility: "Requires Node.js 22.18+ and the matching suo CLI."
 ---
 

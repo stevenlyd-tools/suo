@@ -198,6 +198,20 @@ Unavailable inputs remain unknown. Explicit non-runtime exclusions are reviewed 
 
 The agent owns dialogue, research and semantic judgment. You own product intent and acceptance. Suo keeps the repository model precise enough for both to inspect.
 
+## Use with Duet
+
+Suo records what was decided. It does not move code. [Duet](https://github.com/stevenlyd/duet) is a separate workflow skill for teams where one person prototypes with a coding agent and another engineers the chosen prototypes for production. The two are independent and fit together:
+
+| In Duet | In Suo |
+| --- | --- |
+| an idea, not yet built | a Unit with a `proposed` choice |
+| a prototype checkpointed or running in the Alpha preview | `experimental` |
+| the prototyper selects it and hands it off | `approved`; implementation not yet claimed |
+| the prototype is parked or discarded | `deferred` |
+| the engineer hardens it and merges to main | implementation recorded for the criteria actually covered |
+
+With both installed, a Duet handoff names Unit IDs instead of repeating acceptance criteria as free text, and `duet completion` reads Suo's coverage to check that what was merged matches what was decided. Neither tool requires the other. See [Duet with Suo](https://github.com/stevenlyd/duet/blob/main/skills/duet/references/suo.md).
+
 ## Development
 
 From this repository, using Node.js 22.18+ and the pinned pnpm version:
