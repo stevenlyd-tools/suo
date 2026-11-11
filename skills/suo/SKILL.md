@@ -1,7 +1,7 @@
 ---
 name: suo
 description: Define current repository product Units, their dependencies and honest implementation coverage; collaborate through Git with deterministic validation.
-version: 0.10.1
+version: 0.10.2
 compatibility: "Requires Node.js 22.18+ and the matching suo CLI."
 ---
 
@@ -9,7 +9,7 @@ compatibility: "Requires Node.js 22.18+ and the matching suo CLI."
 
 Suo describes the checked-out commit's current product definition and implementation coverage. Git owns history. A Unit can contain Units at any depth; module and feature are labels, not fixed layers. Use a bounded deliverable boundary when useful, not one Unit per sentence or decision. Current normative decisions, alternatives and unresolved questions stay attached to Units. An intended assignee is an expectation, never evidence that the person accepted the work.
 
-Before mutations, run `suo --version` from the selected runtime and match this skill version. When the loaded Skill's directory or plugin package is known, `suo --root PROJECT writer check --skill PATH` compares its Skill digest as data, without running anything from `PATH` (plugin caches may lack runtime dependencies); `matches: false` blocks mutations. Native plugin instructions and the separately installed Node runtime are different installations. Follow [native distribution](https://github.com/stevenlyd/suo/blob/main/docs/distribution.md) at the reviewed installed revision. Do not silently install a missing executable, copy skill files into managed caches or claim a host update updated the runtime/current session.
+Before mutations, run `suo --version` from the selected runtime and match this skill version. When the loaded Skill's directory or plugin package is known, `suo --root PROJECT writer check --skill PATH` compares its Skill digest as data, without running anything from `PATH` (plugin caches may lack runtime dependencies); `matches: false` blocks mutations. Native plugin instructions and the separately installed Node runtime are different installations. Follow [native distribution](https://github.com/stevenlyd-tools/suo/blob/main/docs/distribution.md) at the reviewed installed revision. Do not silently install a missing executable, copy skill files into managed caches or claim a host update updated the runtime/current session.
 
 ## Writer provenance
 

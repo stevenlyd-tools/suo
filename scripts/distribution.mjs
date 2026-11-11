@@ -8,8 +8,8 @@ export const ROOT = fileURLToPath(new URL('../', import.meta.url))
 const json = value => `${JSON.stringify(value, null, 2)}\n`
 const hash = value => createHash('sha256').update(value).digest('hex')
 const skillPath = 'skills/suo/SKILL.md'
-export const packageFiles = ['dist', 'schemas', 'skills', 'scripts/distribution.mjs', 'docs/distribution.md', 'docs/testing/distribution.md', 'plugin.json', '.claude-plugin', '.agents/plugins', 'gemini-extension.json', 'distribution-lock.json', 'README.md', 'LICENSE', 'docs/validation-upgrade.md', 'docs/unit-runtime.md', 'CHANGELOG.md', 'docs/releases.md']
-const manifestPaths = ['plugin.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', '.agents/plugins/marketplace.json', 'gemini-extension.json']
+export const packageFiles = ['dist', 'schemas', 'skills', 'scripts/distribution.mjs', 'docs/distribution.md', 'docs/testing/distribution.md', 'plugin.json', '.claude-plugin', 'gemini-extension.json', 'distribution-lock.json', 'README.md', 'LICENSE', 'docs/validation-upgrade.md', 'docs/unit-runtime.md', 'CHANGELOG.md', 'docs/releases.md']
+const manifestPaths = ['plugin.json', '.claude-plugin/plugin.json', 'gemini-extension.json']
 export const validVersion = value => /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)
 export function newerVersion(next, previous) {
   if (!validVersion(next) || !validVersion(previous)) return false
@@ -45,8 +45,7 @@ function metadata(pkg) {
   return {
     'plugin.json': json({ $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', ...common, ...identity }),
     '.claude-plugin/plugin.json': json({ ...common, ...identity, skills: './skills/' }),
-    '.claude-plugin/marketplace.json': json({ name: 'stevenlyd-suo', owner: pkg.author, plugins: [{ ...common, source: './' }] }),
-    '.agents/plugins/marketplace.json': json({ name: 'stevenlyd-suo', interface: { displayName: 'Suo' }, plugins: [{ name: 'suo', source: { source: 'local', path: './' }, policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' }, category: 'Productivity' }] }),
+    // Host catalogs live in stevenlyd-tools/plugins, which pins this package by release tag.
     'gemini-extension.json': json(common),
   }
 }
@@ -67,7 +66,7 @@ export function expectedDistribution(root = ROOT) {
   const paths = new Set(['package.json'])
   for (const path of packageFiles.filter(path => path !== 'distribution-lock.json')) {
     if (manifestPaths.includes(path)) paths.add(path)
-    else if (path === '.claude-plugin' || path === '.agents/plugins') {
+    else if (path === '.claude-plugin') {
       for (const file of manifestPaths.filter(file => file.startsWith(`${path}/`))) paths.add(file)
       if (existsSync(join(root, path))) for (const file of walk(root, path)) paths.add(file)
     } else for (const file of walk(root, path)) paths.add(file)

@@ -1,11 +1,11 @@
 {
   "name": "suo",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "A shuttle for thought: one decision at a time, into form.",
   "author": {
     "name": "Steven Liu"
   },
-  "repository": "https://github.com/stevenlyd/suo",
+  "repository": "https://github.com/stevenlyd-tools/suo",
   "license": "MIT",
   "skills": "./skills/"
 }

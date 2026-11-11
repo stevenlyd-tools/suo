@@ -4,9 +4,23 @@ Notable changes use [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Dates on backfilled entries are verified UTC merge dates of the versioned source,
 not claims that a GitHub Release existed then. Earlier history is not reconstructed.
-See [release process](https://github.com/stevenlyd/suo/blob/main/docs/releases.md) for publication and compatibility rules.
+See [release process](https://github.com/stevenlyd-tools/suo/blob/main/docs/releases.md) for publication and compatibility rules.
 
 ## [Unreleased]
+
+## [0.10.2] - 2026-11-11
+
+### Changed
+
+- Suo moved to `stevenlyd-tools/suo`. Codex, Claude Code and Copilot install it from the shared `stevenlyd-tools` marketplace (`stevenlyd-tools/plugins`), which lists Suo and Duet pinned to releases. The repository no longer carries a marketplace of its own.
+
+### Breaking changes
+
+- The `stevenlyd-suo` marketplace is gone; `suo@stevenlyd-suo` no longer updates. The runtime package name and CLI are unchanged.
+
+### Migration
+
+- Remove the `stevenlyd-suo` marketplace, add `stevenlyd-tools/plugins`, and install `suo@stevenlyd-tools`. Runtime installs from `git+https://github.com/stevenlyd/suo.git#REF` keep working through the redirect; switch to `stevenlyd-tools/suo` when convenient.
 
 ## [0.10.1] - 2026-11-10
 
