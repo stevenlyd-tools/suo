@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Ajv2020 } from 'ajv/dist/2020.js'
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -32,8 +32,9 @@ describe('native distribution', () => {
     expect(skill.name).toBe('suo'); expect(skill.version).toBe(pkg.version)
     expect(read(ROOT, 'skills/suo/SKILL.md')).toContain('suo --version')
     expect(object(ROOT, '.claude-plugin/plugin.json')).toMatchObject({ name: 'suo', version: pkg.version, skills: './skills/' })
-    expect(object(ROOT, '.claude-plugin/marketplace.json').plugins).toEqual([{ name: 'suo', version: pkg.version, description: pkg.description, source: './' }])
-    expect(object(ROOT, '.agents/plugins/marketplace.json').plugins[0]).toMatchObject({ name: 'suo', source: { source: 'local', path: './' }, policy: { installation: 'AVAILABLE' } })
+    // Host catalogs live in stevenlyd-tools/plugins; the package ships none of its own.
+    for (const path of ['.claude-plugin/marketplace.json', '.agents/plugins/marketplace.json']) expect(existsSync(join(ROOT, path)), path).toBe(false)
+    expect(plugin.repository).toBe('https://github.com/stevenlyd-tools/suo')
     expect(object(ROOT, 'gemini-extension.json')).toEqual({ name: 'suo', version: pkg.version, description: pkg.description })
     expect(pkg.pi).toEqual({ skills: ['./skills'] })
     expect(pkg.bin.suo).toBe('./dist/cli.js')

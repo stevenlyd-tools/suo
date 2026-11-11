@@ -42,5 +42,5 @@ The automated receipt is the CI run for the exact PR head/merge commit:
 These are package/CLI results, not authenticated host skill-invocation receipts.
 Native discovery, transition to a different version, session reload, local-edit
 handling and rollback still need a supported host's isolated profile and its
-actual configuration. Track those tasks in [Suo #6](https://github.com/stevenlyd/suo/issues/6) without claiming that
+actual configuration. Track those tasks in [Suo #6](https://github.com/stevenlyd-tools/suo/issues/6) without claiming that
 catalog refresh proves installation or session activation.

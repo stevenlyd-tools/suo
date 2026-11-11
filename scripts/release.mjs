@@ -61,7 +61,8 @@ function main(args) {
     const sha = args[1];
     if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('Publish requires a reviewed full commit SHA');
     if (git('status', '--porcelain') || git('rev-parse', 'HEAD') !== sha) throw new Error('Use a clean checkout of the exact release commit');
-    const name = pkg.name.split('/').at(-1), repo = `stevenlyd/${name}`;
+    // The repository this checkout publishes to, from its origin remote (owners can change; package names do not).
+    const repo = gh('repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner').trim(), name = repo.split('/')[1];
     if (api(`repos/${repo}/commits/main`).sha !== sha) throw new Error('Release commit must be current remote main');
     run(process.execPath, ['scripts/distribution.mjs', '--check']);
     const runs = JSON.parse(gh('run', 'list', '--repo', repo, '--commit', sha, '--event', 'push', '--limit', '100', '--json', 'workflowName,status,conclusion'));

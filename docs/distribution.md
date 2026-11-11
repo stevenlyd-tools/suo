@@ -9,12 +9,12 @@ Checked against the official sources linked below on **2026-10-20**. Suo has two
 | File | Native consumer |
 | --- | --- |
 | `plugin.json` | Agent Plugins 1.0: Codex, Cursor, Copilot CLI and compatible VS Code |
-| `.agents/plugins/marketplace.json` | Codex catalog `stevenlyd-suo`; opt-in AVAILABLE policy |
 | `.claude-plugin/plugin.json` | Claude Code compatibility, same `skills/` |
-| `.claude-plugin/marketplace.json` | Claude/Copilot catalog `stevenlyd-suo` |
 | `gemini-extension.json` | Gemini CLI extension, same `skills/` |
 | `package.json` → `pi.skills` | Pi Git/npm package discovery |
 | `skills/suo/` | Hermes GitHub Skills Hub/tap, skill-only |
+
+Host catalogs are not in this repository. The `stevenlyd-tools` marketplace in [stevenlyd-tools/plugins](https://github.com/stevenlyd-tools/plugins) lists Suo and Duet for Codex, Claude Code and Copilot, each pinned to a release tag; a Suo release reaches users when that pin moves, so the pinned plugin and a project's pinned runtime can be kept at the same version.
 
 The repository/package root is the plugin root. It contains the compiled runtime in `dist/`, runtime schemas, declared npm dependencies, license and this guide. No MCP server, lifecycle hook, polling, cron or self-updater is included. The maintainer's distribution generator is not a runtime updater. There were no other host-specific Suo adapters before this change; the Git-contained Unit source loader is a project authority adapter, not an agent distribution channel. External Vault current-state authority is no longer supported; migrate selected definitions explicitly. Shelley/other hosts have no claimed native package/update integration here.
 
@@ -26,7 +26,7 @@ Use Node **22.18+**, npm and Git. Obtain a reviewed full commit SHA from a merge
 SUO_REF=REVIEWED_FULL_40_CHARACTER_COMMIT_SHA
 SUO_RUNTIME=/absolute/path/to/new/suo-runtime
 npm install --prefix "$SUO_RUNTIME" --no-save --omit=dev --no-package-lock \
-  "git+https://github.com/stevenlyd/suo.git#$SUO_REF"
+  "git+https://github.com/stevenlyd-tools/suo.git#$SUO_REF"
 "$SUO_RUNTIME/node_modules/.bin/suo" --version
 "$SUO_RUNTIME/node_modules/.bin/suo" --help
 ```
@@ -43,32 +43,32 @@ The commands below are user-operated setup instructions, not authorization for S
 
 ### Codex
 
-Register the source with `codex plugin marketplace add stevenlyd/suo`. Install with `codex plugin add suo@stevenlyd-suo`, or choose it through `/plugins` or the desktop Plugins UI. Inspect `codex plugin list --json` to verify the installed version and enabled state. Enable it there and start a new session; verify the loaded skill version and runtime. Refresh with `codex plugin marketplace upgrade stevenlyd-suo`, then verify the **installed** version. No universal personal-install unattended-update guarantee is claimed. Workspace/admin synchronization is a different channel and is not configured here.
+Register the catalog with `codex plugin marketplace add stevenlyd-tools/plugins`. Install with `codex plugin add suo@stevenlyd-tools`, or choose it through `/plugins` or the desktop Plugins UI. Inspect `codex plugin list --json` to verify the installed version and enabled state. Enable it there and start a new session; verify the loaded skill version and runtime. Refresh with `codex plugin marketplace upgrade stevenlyd-tools`, then verify the **installed** version. No universal personal-install unattended-update guarantee is claimed. Workspace/admin synchronization is a different channel and is not configured here.
 
-For a pinned source, add the marketplace with `--ref FULL_SHA`. For local testing or rollback, use the documented repo marketplace pointing to an immutable package directory; select it intentionally and restart. Keep only one enabled Suo source. [Packaging/catalogs](https://developers.openai.com/plugins/build/plugins), [developer commands](https://developers.openai.com/codex/developer-commands), [activation](https://developers.openai.com/codex/plugins).
+The catalog already pins Suo to a release tag; to pin the catalog itself, add it with `--ref FULL_SHA`. For local testing or rollback, use the documented repo marketplace pointing to an immutable package directory; select it intentionally and restart. Keep only one enabled Suo source. [Packaging/catalogs](https://developers.openai.com/plugins/build/plugins), [developer commands](https://developers.openai.com/codex/developer-commands), [activation](https://developers.openai.com/codex/plugins).
 
 ### Claude Code
 
 ```sh
-claude plugin marketplace add stevenlyd/suo
-claude plugin install suo@stevenlyd-suo
+claude plugin marketplace add stevenlyd-tools/plugins
+claude plugin install suo@stevenlyd-tools
 claude plugin list
-claude plugin update suo@stevenlyd-suo
+claude plugin update suo@stevenlyd-tools
 ```
 
 Use `/plugin` to enable/disable and inspect errors; `claude plugin validate /path/to/reviewed/suo` validates a local package. Third-party marketplace auto-update defaults off. A user may enable it in `/plugin` → Marketplaces. It updates installed files, while a running session retains its loaded version: use `/reload-plugins` deliberately or start a new session, then verify runtime parity. For rollback/local testing, load a known-good checkout with `claude --plugin-dir /absolute/path/to/suo` after disabling the duplicate managed source. [Installation/update](https://code.claude.com/docs/en/plugins/install), [manifest and paths](https://code.claude.com/docs/en/plugins-reference).
 
 ### Cursor
 
-The root Agent Plugins manifest supports skills without a Cursor-only fork. With an existing eligible team marketplace, import `https://github.com/stevenlyd/suo`, review it, then install/enable Suo in Customize at the intended scope. No team access or public listing was provisioned. Team GitHub Auto Refresh requires the Cursor GitHub App and explicit marketplace settings; it re-indexes the catalog. Verify the installed revision and newly loaded skill separately.
+The root Agent Plugins manifest supports skills without a Cursor-only fork. With an existing eligible team marketplace, import `https://github.com/stevenlyd-tools/suo`, review it, then install/enable Suo in Customize at the intended scope. No team access or public listing was provisioned. Team GitHub Auto Refresh requires the Cursor GitHub App and explicit marketplace settings; it re-indexes the catalog. Verify the installed revision and newly loaded skill separately.
 
 Without that channel, the documented `~/.cursor/plugins/local/suo` directory supports local development packages only: placing/replacing a reviewed checkout there is **manual local development**, not a managed installation or automatic updater. Back it up, avoid collisions, reload the window and verify in Customize. Restore a known-good local checkout for rollback; managed-version rollback needs the available team UI/admin flow. [Formats](https://cursor.com/docs/reference/plugins), [install, local development and refresh](https://cursor.com/docs/plugins).
 
 ### GitHub Copilot CLI
 
 ```sh
-copilot plugin marketplace add stevenlyd/suo
-copilot plugin install suo@stevenlyd-suo
+copilot plugin marketplace add stevenlyd-tools/plugins
+copilot plugin install suo@stevenlyd-tools
 copilot plugin list --json
 copilot plugin update suo
 ```
@@ -77,14 +77,14 @@ copilot plugin update suo
 
 ### GitHub Copilot in VS Code
 
-In a supported Copilot harness use `/plugin marketplace add stevenlyd/suo`, `/plugin install suo@stevenlyd-suo`, `/plugin list`, and `/plugin update suo@stevenlyd-suo`. Manage enablement from the same UI/inventory used to install; the slash-command and customization inventories can differ. Plugin support must already be permitted by user/admin settings. Start a new chat/window and verify the selected skill and CLI.
+In a supported Copilot harness use `/plugin marketplace add stevenlyd-tools/plugins`, `/plugin install suo@stevenlyd-tools`, `/plugin list`, and `/plugin update suo@stevenlyd-tools`. Manage enablement from the same UI/inventory used to install; the slash-command and customization inventories can differ. Plugin support must already be permitted by user/admin settings. Start a new chat/window and verify the selected skill and CLI.
 
-The Extensions UI checks plugin updates automatically every 24 hours when `extensions.autoUpdate` is enabled; this is separate from VS Code binary updates. Manual “Extensions: Check for Extension Updates” is available. A marketplace can use `stevenlyd/suo#FULL_SHA` for a reviewed rollback pin; do not assume a running conversation hot-loads it. [Official management and pinning](https://code.visualstudio.com/docs/agent-customization/agent-plugins). Local VS Code **1.104.2** predates [agent plugin support introduced in 1.110](https://code.visualstudio.com/updates/v1_110); no plugin runtime test is claimed on it.
+The Extensions UI checks plugin updates automatically every 24 hours when `extensions.autoUpdate` is enabled; this is separate from VS Code binary updates. Manual “Extensions: Check for Extension Updates” is available. A marketplace can use `stevenlyd-tools/plugins#FULL_SHA` for a reviewed rollback pin; do not assume a running conversation hot-loads it. [Official management and pinning](https://code.visualstudio.com/docs/agent-customization/agent-plugins). Local VS Code **1.104.2** predates [agent plugin support introduced in 1.110](https://code.visualstudio.com/updates/v1_110); no plugin runtime test is claimed on it.
 
 ### Gemini CLI
 
 ```sh
-gemini extensions install https://github.com/stevenlyd/suo.git
+gemini extensions install https://github.com/stevenlyd-tools/suo.git
 gemini extensions list
 gemini extensions update suo
 ```
@@ -94,24 +94,24 @@ Use `gemini extensions enable suo` if disabled. Restart the session after manage
 ### Hermes
 
 ```sh
-hermes skills inspect stevenlyd/suo/skills/suo
-hermes skills install stevenlyd/suo/skills/suo
+hermes skills inspect stevenlyd-tools/suo/skills/suo
+hermes skills install stevenlyd-tools/suo/skills/suo
 hermes skills list --source hub
 hermes skills check
 hermes skills update suo
 ```
 
-This is a native **skill-only** GitHub install. Optional tap registration is `hermes skills tap add stevenlyd/suo`. Updates are manual, using upstream provenance/content hashes; local edits are skipped. Do not force-overwrite them. Verify availability in a fresh session and check runtime parity. No periodic automatic update or tested generic Git-ref rollback syntax is claimed. Keep a reviewed skill backup for recovery; if native restoration is unavailable, disable/remove the new source and use a deliberately reviewed manual restore, not a fabricated managed rollback. [Official Skills Hub guide](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills).
+This is a native **skill-only** GitHub install. Optional tap registration is `hermes skills tap add stevenlyd-tools/suo`. Updates are manual, using upstream provenance/content hashes; local edits are skipped. Do not force-overwrite them. Verify availability in a fresh session and check runtime parity. No periodic automatic update or tested generic Git-ref rollback syntax is claimed. Keep a reviewed skill backup for recovery; if native restoration is unavailable, disable/remove the new source and use a deliberately reviewed manual restore, not a fabricated managed rollback. [Official Skills Hub guide](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills).
 
 ### Pi
 
 ```sh
-pi install git:github.com/stevenlyd/suo
+pi install git:github.com/stevenlyd-tools/suo
 pi list
 pi update --extensions
 ```
 
-This explicitly declares only `pi.skills`; no extension code is auto-loaded. Pi installs dependencies for Git/npm packages, but its package install does not promise a globally available `suo` command. Verify the selected standalone runtime as above. Use `git:github.com/stevenlyd/suo@FULL_SHA` for a fixed revision; reconciliation keeps that pin, while unpinned sources can advance. Start a new session or use the host's supported reload, verify `/skill:suo` discovery and version. To roll back, remove the configured new source normally and install the recorded pinned source. Native update is manual; no periodic updater is claimed. [Packages](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md), [skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md).
+This explicitly declares only `pi.skills`; no extension code is auto-loaded. Pi installs dependencies for Git/npm packages, but its package install does not promise a globally available `suo` command. Verify the selected standalone runtime as above. Use `git:github.com/stevenlyd-tools/suo@FULL_SHA` for a fixed revision; reconciliation keeps that pin, while unpinned sources can advance. Start a new session or use the host's supported reload, verify `/skill:suo` discovery and version. To roll back, remove the configured new source normally and install the recorded pinned source. Native update is manual; no periodic updater is claimed. [Packages](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md), [skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md).
 
 ## Existing installs and failed updates
 
@@ -132,4 +132,4 @@ node scripts/distribution.mjs --check --base FULL_BASE_COMMIT_SHA
 
 Package tests pack the actual allowlist, install only production dependencies in a fresh temporary prefix, verify version/manifest/hash parity, and exercise the installed CLI without repository `src/` or dev dependencies. Native host install/update/reload/rollback and authenticated skill invocation remain **unverified** when the host is unavailable. See [validation receipt](testing/distribution.md) for the exact environment and tests. No automatic-update setting was toggled. Remaining host-runtime verification belongs in Suo issues; it is not evidence that an unavailable host passed.
 
-The design was compared against [Duet's committed distribution guide at 2635bb5](https://github.com/stevenlyd/duet/blob/2635bb56a541c763716d87ab75e8020659a36334/docs/distribution.md). Suo's production dependency/runtime packaging and version readiness check are specific to Suo. This release prepares native repository channels; it does not publish tags, release assets, npm packages or public marketplace listings.
+The design was compared against [Duet's committed distribution guide at 2635bb5](https://github.com/stevenlyd-tools/duet/blob/2635bb56a541c763716d87ab75e8020659a36334/docs/distribution.md). Suo's production dependency/runtime packaging and version readiness check are specific to Suo. This release prepares native repository channels; it does not publish tags, release assets, npm packages or public marketplace listings.

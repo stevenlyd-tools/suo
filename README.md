@@ -66,7 +66,7 @@ Each Unit can hold:
 
 Dependencies are separate from containment. A dependency says which prerequisite is needed—its **contract**, **implementation** or **verification**—and when the consuming Unit needs it: **start**, **verify** or **accept**. For example, gallery viewing can require the sign-in contract before work starts without pretending that sign-in has already been deployed. Suo checks the resulting dependency and phase graphs for cycles; it does not perform external verification.
 
-See the [small Unit snapshot](https://github.com/stevenlyd/suo/blob/main/examples/current-units.json), [typed model](https://github.com/stevenlyd/suo/blob/main/src/unit-model.ts) and [runtime contract](docs/unit-runtime.md) for the exact fields and rules.
+See the [small Unit snapshot](https://github.com/stevenlyd-tools/suo/blob/main/examples/current-units.json), [typed model](https://github.com/stevenlyd-tools/suo/blob/main/src/unit-model.ts) and [runtime contract](docs/unit-runtime.md) for the exact fields and rules.
 
 ## Install the skill and runtime
 
@@ -186,7 +186,7 @@ After reviewing actual code, an agent can prepare a `record` envelope containing
 
 `record` binds the declaration to the observed definition and repository input fingerprints. Changed definitions, dependencies, source, configuration or lockfiles can make it stale. Relevant new candidate files count too. Reinspect and review the change before rebinding; substituting a new token is not a review. `suo --root PROJECT explain UNIT_ID [--depth N]` is the read-only aid for that review: it finds the first-parent commit that introduced the binding, reports whether that commit or its parent reproduces the recorded input fingerprint (`exact`), and lists changed own-definition fields, decisions, input-policy changes and changed input paths. Paths that still exist but changed bound status under a new policy are `excluded`/`included`. The output is guidance, never permission to rebind.
 
-A complete declared implementation needs source coverage for every criterion and own integration obligation, plus the required child scope. A missing declaration remains **unknown**. A null check policy remains **unresolved**, not an empty list of checks. Even a current, complete declaration does not prove correct behavior or user acceptance. See the [CLI end-to-end example](https://github.com/stevenlyd/suo/blob/main/test/cli-e2e.mjs) for a runnable record/inspect/stale-input exercise.
+A complete declared implementation needs source coverage for every criterion and own integration obligation, plus the required child scope. A missing declaration remains **unknown**. A null check policy remains **unresolved**, not an empty list of checks. Even a current, complete declaration does not prove correct behavior or user acceptance. See the [CLI end-to-end example](https://github.com/stevenlyd-tools/suo/blob/main/test/cli-e2e.mjs) for a runnable record/inspect/stale-input exercise.
 
 ## Deterministic boundaries
 
@@ -200,7 +200,7 @@ The agent owns dialogue, research and semantic judgment. You own product intent 
 
 ## Use with Duet
 
-Suo records what was decided. It does not move code. [Duet](https://github.com/stevenlyd/duet) is a separate workflow skill for teams where one person prototypes with a coding agent and another engineers the chosen prototypes for production. The two are independent and fit together:
+Suo records what was decided. It does not move code. [Duet](https://github.com/stevenlyd-tools/duet) is a separate workflow skill for teams where one person prototypes with a coding agent and another engineers the chosen prototypes for production. The two are independent and fit together:
 
 | In Duet | In Suo |
 | --- | --- |
@@ -210,7 +210,7 @@ Suo records what was decided. It does not move code. [Duet](https://github.com/s
 | the prototype is parked or discarded | `deferred` |
 | the engineer hardens it and merges to main | implementation recorded for the criteria actually covered |
 
-With both installed, a Duet handoff names Unit IDs instead of repeating acceptance criteria as free text, and `duet completion` reads Suo's coverage to check that what was merged matches what was decided. Neither tool requires the other. See [Duet with Suo](https://github.com/stevenlyd/duet/blob/main/skills/duet/references/suo.md).
+With both installed, a Duet handoff names Unit IDs instead of repeating acceptance criteria as free text, and `duet completion` reads Suo's coverage to check that what was merged matches what was decided. Neither tool requires the other. See [Duet with Suo](https://github.com/stevenlyd-tools/duet/blob/main/skills/duet/references/suo.md).
 
 ## Development
 

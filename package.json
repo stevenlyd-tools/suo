@@ -1,6 +1,6 @@
 {
   "name": "@stevenlyd/suo",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "A shuttle for thought: one decision at a time, into form.",
   "type": "module",
   "private": true,
@@ -23,7 +23,6 @@
     "docs/testing/distribution.md",
     "plugin.json",
     ".claude-plugin",
-    ".agents/plugins",
     "gemini-extension.json",
     "distribution-lock.json",
     "README.md",
@@ -74,7 +73,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/stevenlyd/suo"
+    "url": "https://github.com/stevenlyd-tools/suo"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts"
