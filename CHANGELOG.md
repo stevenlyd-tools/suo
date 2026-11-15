@@ -12,7 +12,7 @@ See [release process](https://github.com/stevenlyd-tools/suo/blob/main/docs/rele
 
 ### Added
 
-- Opt-in Unit-scoped input fingerprints. `inputPolicy` gains `scope` (`repository` or `declared`) and `sharedPaths`. Under `declared` a Unit binds only its own coverage paths, documents and the shared paths, minus exclusions, so a change outside them no longer makes it stale. Imports of mapped files are not followed: map or share a helper that carries a Unit's behavior ([stevenlyd/partners-in-cart#230](https://github.com/stevenlyd/partners-in-cart/issues/230)).
+- Opt-in Unit-scoped input fingerprints. `inputPolicy` gains `scope` (`repository` or `declared`) and `sharedPaths`. Under `declared` a Unit binds only its own coverage paths, documents and the shared paths, minus exclusions, so a change outside them no longer makes it stale. Imports of mapped files are not followed: map or share a helper that carries a Unit's behavior ([#24](https://github.com/stevenlyd-tools/suo/pull/24), [stevenlyd/partners-in-cart#230](https://github.com/stevenlyd/partners-in-cart/issues/230)).
 - `rescope ENVELOPE.json --yes|--dry-run [--depth N]` replaces the input policy and translates each binding from its exactly reproduced base (the working tree when current, else the binding commit, its parent or, for a merge commit, the merged branch where it was recorded), only when the new scope binds nothing the old binding did not. Anything else keeps its old fingerprint and reads stale.
 - Each `inspect`/`check` Unit projection carries its own `inputDigest`; `record` binds it.
 
