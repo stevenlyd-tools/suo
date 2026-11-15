@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readRepository, loadRepositoryUnits } from './unit-checkout.js';
 import { inspectUnits, validateUnits } from './unit-core.js';
-import { findBindingCommit, bindingBaseCandidates, scopedInputs } from './unit-explain.js';
+import { findBindingCommit, bindingBaseCandidates, recordedMapping, scopedInputs } from './unit-explain.js';
 import { saveUnits } from './unit-store.js';
 import { canonical } from './unit-identity.js';
 const git = (root, args) => execFileSync('git', ['-C', root, ...args], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
@@ -40,10 +40,12 @@ export async function rescopeUnits(root, expectedToken, inputPolicy, depth = 200
         const old = before.units.find(u => u.id === unit.id);
         // The binding's own snapshot (its policy and mapping) and the trees that may reproduce it.
         // `snapshot` reproduces the recorded fingerprint; `mapping` is the coverage/documents the binding was recorded with.
+        // `mapping` null: the binding entered through a merge whose recorded mapping is unconfirmed; nothing is translated from it.
         let bases;
         if (scopedInputs(before, repository.context, old).identity === recorded) {
             // Current in the working tree; a committed binding's mapping is the one from the commit that recorded it.
-            const recordedIn = start ? (await findBindingCommit(root, start, old, depth, cache))?.snapshot ?? before : before;
+            const introduced = start ? await findBindingCommit(root, start, old, depth, cache) : null;
+            const recordedIn = introduced ? await recordedMapping(root, introduced, unit.id, depth, cache) : before;
             bases = (async function* () { yield { label: 'working-tree', snapshot: before, mapping: recordedIn, context: async () => repository.context }; })();
         }
         else {
@@ -53,7 +55,7 @@ export async function rescopeUnits(root, expectedToken, inputPolicy, depth = 200
                 continue;
             }
             bases = (async function* () { for await (const base of bindingBaseCandidates(root, found, unit.id, depth, cache))
-                yield { label: base.commit, snapshot: base.snapshot, mapping: base.snapshot, context: () => contextAt(base.commit) }; })();
+                yield { label: base.commit, snapshot: base.snapshot, mapping: base.mappingKnown ? base.snapshot : null, context: () => contextAt(base.commit) }; })();
         }
         let outcome = { unitId: unit.id, result: 'kept', reason: 'recorded input fingerprint is not exactly reproduced by any candidate base (binding commit, its parent, the merged branch or a translated binding)' };
         for await (const base of bases) {
@@ -68,6 +70,10 @@ export async function rescopeUnits(root, expectedToken, inputPolicy, depth = 200
             if (prior.identity !== recorded)
                 continue;
             // Translate the mapping the binding was recorded with, never a later unreviewed remap: that must keep reading stale.
+            if (!base.mapping) {
+                outcome = { unitId: unit.id, result: 'kept', reason: 'binding entered through a merge whose recorded mapping cannot be confirmed on the merged branch' };
+                break;
+            }
             const recordedUnit = base.mapping.units.find(u => u.id === unit.id) ?? old;
             let next;
             try {

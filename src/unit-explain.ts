@@ -55,7 +55,29 @@ async function findEarlierRun(root: string, before: string, unit: Unit, depth: n
   return null
 }
 /** A tree that may hold a binding's exact inputs, and the snapshot (policy and mapping) its recorded fingerprint used there. */
-export interface BindingBase { commit: string; snapshot: UnitSnapshot }
+export interface BindingBase {
+  commit: string; snapshot: UnitSnapshot
+  /** False when the binding entered through a merge whose recorded mapping cannot be confirmed on the merged branch. */
+  mappingKnown: boolean
+}
+const mappingKey = (u: Unit | undefined) => u ? canonical([[...new Set(u.implementation.coverage.map(c => c.path))].sort(), [...u.documents].sort()]) : null
+/**
+ * The snapshot holding the mapping a committed binding was recorded with, or null when it cannot be determined. A binding
+ * that a merge commit introduces was recorded on the merged branch: that branch's recording commit must hold the binding
+ * with the same mapping as the merge, else the merge may carry an unreviewed remap and the mapping is unknown.
+ */
+export async function recordedMapping(root: string, found: { commit: string; snapshot: UnitSnapshot }, unitId: string, depth: number, cache: AuthorityCache = new Map()): Promise<UnitSnapshot | null> {
+  let current = found
+  for (let hops = 0; hops < depth; hops++) {
+    const parent = commit(root, `${current.commit}^`), merged = commit(root, `${current.commit}^2`), unit = current.snapshot.units.find(u => u.id === unitId)
+    if (!merged || !parent) return current.snapshot
+    if (!unit) return null
+    const inner = await findBindingCommit(root, merged, unit, depth, cache, parent)
+    if (!inner || mappingKey(inner.snapshot.units.find(u => u.id === unitId)) !== mappingKey(unit)) return null
+    current = inner
+  }
+  return null
+}
 /**
  * Trees that may hold the exact inputs of a committed binding, best first: the binding commit and its parent; when the
  * binding commit is a merge, the same search along the merged branch (where the binding was actually recorded); and when it
@@ -72,9 +94,10 @@ export async function* bindingBaseCandidates(root: string, found: { commit: stri
     if (seen.has(canonical([f.commit, f.policy]))) continue
     seen.add(canonical([f.commit, f.policy]))
     const parent = commit(root, `${f.commit}^`), merged = commit(root, `${f.commit}^2`)
-    const here = { commit: f.commit, snapshot: test }
+    const mappingKnown = (await recordedMapping(root, { commit: f.commit, snapshot: f.holder }, unitId, depth, cache)) !== null
+    const here = { commit: f.commit, snapshot: test, mappingKnown }
     if (fresh(here)) yield here
-    if (parent) { const p = { commit: parent, snapshot: test }; if (fresh(p)) yield p }
+    if (parent) { const p = { commit: parent, snapshot: test, mappingKnown }; if (fresh(p)) yield p }
     const unit = f.holder.units.find(u => u.id === unitId)
     if (merged && parent && unit) { const inner = await findBindingCommit(root, merged, unit, depth, cache, parent); if (inner) queue.push({ commit: inner.commit, holder: inner.snapshot, policy: f.policy }) }
     const prior = parent ? await authorityAt(root, parent, cache) : null, priorUnit = prior?.units.find(u => u.id === unitId)
@@ -123,7 +146,7 @@ export async function explainUnit(root: string, target: Target, ref: string, uni
   } else result.definition = { changed: definitionChanged, fields: [], decisionsChanged: false, comparedWith: null }
   if (!inputsChanged || !reference) { result.inputs = { changed: inputsChanged, base: null, policyChanged: false, changes: [] }; return result }
   const candidates: Array<{ commit: string; context: CheckoutContext; exact: boolean; snapshot: UnitSnapshot }> = []
-  for await (const candidate of found ? bindingBaseCandidates(root, found, unitId, depth, cache) : [{ commit: reference.commit, snapshot: reference.snapshot }]) {
+  for await (const candidate of found ? bindingBaseCandidates(root, found, unitId, depth, cache) : [{ commit: reference.commit, snapshot: reference.snapshot, mappingKnown: true }]) {
     const context = (await readRepository(root, 'commit', candidate.commit)).context
     let exact = false
     try { exact = scopedInputs(candidate.snapshot, context, unit).identity === unit.implementation.inputDigest } catch { /* coverage no longer resolves there: not reproducible */ }

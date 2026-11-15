@@ -42,7 +42,18 @@ export declare function findBindingCommit(root: string, start: string, unit: Uni
 export interface BindingBase {
     commit: string;
     snapshot: UnitSnapshot;
+    /** False when the binding entered through a merge whose recorded mapping cannot be confirmed on the merged branch. */
+    mappingKnown: boolean;
 }
+/**
+ * The snapshot holding the mapping a committed binding was recorded with, or null when it cannot be determined. A binding
+ * that a merge commit introduces was recorded on the merged branch: that branch's recording commit must hold the binding
+ * with the same mapping as the merge, else the merge may carry an unreviewed remap and the mapping is unknown.
+ */
+export declare function recordedMapping(root: string, found: {
+    commit: string;
+    snapshot: UnitSnapshot;
+}, unitId: string, depth: number, cache?: AuthorityCache): Promise<UnitSnapshot | null>;
 /**
  * Trees that may hold the exact inputs of a committed binding, best first: the binding commit and its parent; when the
  * binding commit is a merge, the same search along the merged branch (where the binding was actually recorded); and when it

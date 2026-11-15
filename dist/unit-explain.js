@@ -47,6 +47,27 @@ async function findEarlierRun(root, before, unit, depth, cache) {
     }
     return null;
 }
+const mappingKey = (u) => u ? canonical([[...new Set(u.implementation.coverage.map(c => c.path))].sort(), [...u.documents].sort()]) : null;
+/**
+ * The snapshot holding the mapping a committed binding was recorded with, or null when it cannot be determined. A binding
+ * that a merge commit introduces was recorded on the merged branch: that branch's recording commit must hold the binding
+ * with the same mapping as the merge, else the merge may carry an unreviewed remap and the mapping is unknown.
+ */
+export async function recordedMapping(root, found, unitId, depth, cache = new Map()) {
+    let current = found;
+    for (let hops = 0; hops < depth; hops++) {
+        const parent = commit(root, `${current.commit}^`), merged = commit(root, `${current.commit}^2`), unit = current.snapshot.units.find(u => u.id === unitId);
+        if (!merged || !parent)
+            return current.snapshot;
+        if (!unit)
+            return null;
+        const inner = await findBindingCommit(root, merged, unit, depth, cache, parent);
+        if (!inner || mappingKey(inner.snapshot.units.find(u => u.id === unitId)) !== mappingKey(unit))
+            return null;
+        current = inner;
+    }
+    return null;
+}
 /**
  * Trees that may hold the exact inputs of a committed binding, best first: the binding commit and its parent; when the
  * binding commit is a merge, the same search along the merged branch (where the binding was actually recorded); and when it
@@ -65,11 +86,12 @@ export async function* bindingBaseCandidates(root, found, unitId, depth, cache =
             continue;
         seen.add(canonical([f.commit, f.policy]));
         const parent = commit(root, `${f.commit}^`), merged = commit(root, `${f.commit}^2`);
-        const here = { commit: f.commit, snapshot: test };
+        const mappingKnown = (await recordedMapping(root, { commit: f.commit, snapshot: f.holder }, unitId, depth, cache)) !== null;
+        const here = { commit: f.commit, snapshot: test, mappingKnown };
         if (fresh(here))
             yield here;
         if (parent) {
-            const p = { commit: parent, snapshot: test };
+            const p = { commit: parent, snapshot: test, mappingKnown };
             if (fresh(p))
                 yield p;
         }
@@ -149,7 +171,7 @@ export async function explainUnit(root, target, ref, unitId, depth = 200) {
         return result;
     }
     const candidates = [];
-    for await (const candidate of found ? bindingBaseCandidates(root, found, unitId, depth, cache) : [{ commit: reference.commit, snapshot: reference.snapshot }]) {
+    for await (const candidate of found ? bindingBaseCandidates(root, found, unitId, depth, cache) : [{ commit: reference.commit, snapshot: reference.snapshot, mappingKnown: true }]) {
         const context = (await readRepository(root, 'commit', candidate.commit)).context;
         let exact = false;
         try {

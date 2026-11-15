@@ -180,3 +180,13 @@ it('rescope finds the exact base of a binding restored by a revert', async () =>
   git('checkout', recorded, '--', 'suo'); commit('Restore the earlier record')
   expect((await rescopeUnits(root, (await load()).repo.token, declaredPolicy)).units).toMatchObject([{ unitId: 'a', result: 'translated', base: recorded, inputs: 'stale' }])
 })
+
+it('rescope keeps a binding whose no-ff merge carries an unreviewed remap', async () => {
+  await write('src/x.ts', 'export const x = 1\n'); commit('Add x')
+  git('checkout', '-q', '-b', 'feature'); await record(['a'], paths); commit('Record a on branch')
+  const { repo, snapshot } = await load(); snapshot.units[0]!.implementation.coverage = [{ criterionId: 'c', path: 'src/x.ts', symbol: null, kind: 'source' }]; await saveUnits(root, snapshot, repo.token); commit('Remap a without rebinding')
+  git('checkout', '-q', 'main'); git('merge', '-q', '--no-ff', '-m', 'Merge feature', 'feature')
+  await write('src/a.ts', 'export const v = 3\n'); commit('Change a')
+  expect((await rescopeUnits(root, (await load()).repo.token, declaredPolicy)).units).toEqual([{ unitId: 'a', result: 'kept', reason: 'binding entered through a merge whose recorded mapping cannot be confirmed on the merged branch' }])
+  expect((await applicability()).a).toBe('stale')
+})
