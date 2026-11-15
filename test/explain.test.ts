@@ -1,4 +1,4 @@
-import { it, expect, beforeEach, afterEach } from 'vitest'
+import { it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,6 +9,8 @@ import { inspectUnits } from '../src/unit-core.js'
 import { explainUnit } from '../src/unit-explain.js'
 import type { Unit, UnitSnapshot } from '../src/unit-model.js'
 
+// Each load compiles the TS authority; with other Git fixtures running in parallel the default 5 s is too tight.
+vi.setConfig({ testTimeout: 60_000 })
 let root: string
 const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' })
 const commit = (message: string) => { git('add', '-A'); git('commit', '-q', '-m', message); return git('rev-parse', 'HEAD').trim() }
@@ -23,7 +25,7 @@ async function record() {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'suo-explain-'))
   git('init', '-q', '-b', 'main'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.test')
-  await createUnitTemplate(root, { schemaVersion: 5, product: { id: 'p', title: 'P' }, units: [unit], decisions: [], containment: [], dependencies: [], inputPolicy: { nonRuntimePaths: [], rationale: 'All inputs' } })
+  await createUnitTemplate(root, { schemaVersion: 5, product: { id: 'p', title: 'P' }, units: [unit], decisions: [], containment: [], dependencies: [], inputPolicy: { nonRuntimePaths: [], rationale: 'All inputs', scope: 'repository', sharedPaths: [] } })
   await writeFile(join(root, '.gitignore'), '.suo/\n'); await writeFile(join(root, 'app.ts'), 'export const app = 1\n'); await writeFile(join(root, 'meta.json'), '{"v":1}\n'); commit('Initial')
 })
 afterEach(() => rm(root, { recursive: true, force: true }))

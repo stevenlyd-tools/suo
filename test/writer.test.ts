@@ -7,7 +7,7 @@ import { checkSkill, checkWriter, currentWriter, requireCompatibleWriter, compar
 import { createUnitTemplate, saveUnits } from '../src/unit-store.js'
 import { readRepository, loadRepositoryUnits } from '../src/unit-checkout.js'
 import type { UnitSnapshot } from '../src/unit-model.js'
-const snapshot = (): UnitSnapshot => ({ schemaVersion:5,product:{id:'p',title:'Test'},units:[],decisions:[],containment:[],dependencies:[],inputPolicy:{nonRuntimePaths:[],rationale:'All inputs'} })
+const snapshot = (): UnitSnapshot => ({ schemaVersion:5,product:{id:'p',title:'Test'},units:[],decisions:[],containment:[],dependencies:[],inputPolicy:{nonRuntimePaths:[],rationale:'All inputs', scope: 'repository', sharedPaths: []} })
 async function fixture() { const root = await mkdtemp(join(tmpdir(),'suo-writer-')); execFileSync('git',['-C',root,'init'],{stdio:'pipe'}); await writeFile(join(root,'.gitignore'),'.suo/\n'); return root }
 it('compares recorded versions without a latest policy and rejects same-version drift',async()=>{
  const current=await currentWriter();expect(compareWriterVersions('0.10.0','0.9.0')).toBe(1)

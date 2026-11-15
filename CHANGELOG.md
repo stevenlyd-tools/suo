@@ -8,6 +8,27 @@ See [release process](https://github.com/stevenlyd-tools/suo/blob/main/docs/rele
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-15
+
+### Added
+
+- Opt-in Unit-scoped input fingerprints. `inputPolicy` gains `scope` (`repository` or `declared`) and `sharedPaths`. Under `declared` a Unit binds only its own coverage paths, documents and the shared paths, minus exclusions, so a change outside them no longer makes it stale. Imports of mapped files are not followed: map or share a helper that carries a Unit's behavior ([stevenlyd/partners-in-cart#230](https://github.com/stevenlyd/partners-in-cart/issues/230)).
+- `rescope ENVELOPE.json --yes|--dry-run [--depth N]` replaces the input policy and translates each binding from its exactly reproduced base (the working tree when current, else the binding commit, its parent or, for a merge commit, the merged branch where it was recorded), only when the new scope binds nothing the old binding did not. Anything else keeps its old fingerprint and reads stale.
+- Each `inspect`/`check` Unit projection carries its own `inputDigest`; `record` binds it.
+
+### Changed
+
+- `explain` compares the Unit's own scoped inputs. Paths that entered or left the scope through a policy, coverage or document change are `included`/`excluded`. Its base search now also follows a merge commit's merged branch, where the binding was actually recorded, and for a binding translated by `rescope` the translated binding's base, so more bases are exact.
+- The generated ontology spells out `scope` and `sharedPaths`. The 0.10 ontology is still read as `scope: "repository", sharedPaths: []`.
+
+### Breaking changes
+
+- The first 0.11 write to a repository replaces `suo/ontology.d.ts` and adds `"scope":"repository","sharedPaths":[]` to the policy; 0.10 clients cannot load the repository afterwards (the writer floor already requires 0.11 writers). API callers that build snapshots must supply both new policy fields. Schema 5 and existing bindings are unchanged: the default scope fingerprints the policy exactly as 0.10 did.
+
+### Migration
+
+- None required: repositories stay on the `repository` scope and every binding keeps its applicability. To adopt `declared`, export the snapshot, write `{expectedToken, inputPolicy}` with `scope: "declared"` outside the repository, review `rescope FILE --dry-run`, then run `rescope FILE --yes` and commit the result with regenerated views. Rollback: `rescope` back to `repository` (bindings it cannot vouch for read stale) or revert the commit.
+
 ## [0.10.2] - 2026-11-11
 
 ### Changed

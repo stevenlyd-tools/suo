@@ -612,7 +612,9 @@
       "additionalProperties": false,
       "required": [
         "nonRuntimePaths",
-        "rationale"
+        "rationale",
+        "scope",
+        "sharedPaths"
       ],
       "properties": {
         "nonRuntimePaths": {
@@ -627,6 +629,20 @@
           "type": "string",
           "minLength": 1,
           "pattern": "\\S"
+        },
+        "scope": {
+          "enum": [
+            "repository",
+            "declared"
+          ]
+        },
+        "sharedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
         }
       }
     }

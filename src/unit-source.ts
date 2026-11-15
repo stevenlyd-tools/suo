@@ -3,7 +3,7 @@ import { readFile, readdir, realpath } from 'node:fs/promises'
 import { join, relative, resolve, dirname, sep } from 'node:path'
 import { build } from 'esbuild'
 import ts from 'typescript'
-import { unitShape, decisionShape, type UnitSnapshot, type Unit, type UnitDecision } from './unit-model.js'
+import { unitShape, decisionShape, inputPolicyShape, type UnitSnapshot, type Unit, type UnitDecision } from './unit-model.js'
 import type { Shape } from './unit-shape.js'
 import { validateUnits, repositoryPath } from './unit-core.js'
 import { digest, canonical } from './unit-identity.js'
@@ -23,7 +23,10 @@ function typeExpression(shape: Shape<unknown>): string {
   }
   return out.join('')
 }
-export const unitOntology = `// Generated from runtime shapes. Do not edit.\nexport type UnitNode = ${typeExpression(unitShape)};\nexport type DecisionData = ${typeExpression(decisionShape)};\nexport interface DecisionNode extends Omit<DecisionData, 'unitId' | 'prerequisites'> { unit: UnitNode; prerequisites: DecisionNode[] }\nexport interface UnitAuthority { schemaVersion: 5; product: {id:string;title:string}; units: UnitNode[]; decisions: DecisionNode[]; containment: Array<{parent:UnitNode;child:UnitNode}>; dependencies: Array<{consumer:UnitNode;prerequisite:UnitNode;require:'contract'|'implementation'|'verification';at:'start'|'verify'|'accept'}>; inputPolicy:{nonRuntimePaths:string[];rationale:string} }\n`
+const ontology = (inputPolicy: string) => `// Generated from runtime shapes. Do not edit.\nexport type UnitNode = ${typeExpression(unitShape)};\nexport type DecisionData = ${typeExpression(decisionShape)};\nexport interface DecisionNode extends Omit<DecisionData, 'unitId' | 'prerequisites'> { unit: UnitNode; prerequisites: DecisionNode[] }\nexport interface UnitAuthority { schemaVersion: 5; product: {id:string;title:string}; units: UnitNode[]; decisions: DecisionNode[]; containment: Array<{parent:UnitNode;child:UnitNode}>; dependencies: Array<{consumer:UnitNode;prerequisite:UnitNode;require:'contract'|'implementation'|'verification';at:'start'|'verify'|'accept'}>; inputPolicy:${inputPolicy} }\n`
+export const unitOntology = ontology(typeExpression(inputPolicyShape))
+/** The 0.10 ontology, read as `scope: 'repository', sharedPaths: []`; the next write replaces it with the current one. */
+export const legacyUnitOntology = ontology('{nonRuntimePaths:string[];rationale:string}')
 export async function sourceFiles(root: string): Promise<string[]> {
   const stack = [join(root, 'suo')], files: string[] = [], actualRoot = await realpath(root)
   while (stack.length) for (const entry of await readdir(stack.pop()!, { withFileTypes: true })) {
@@ -60,9 +63,10 @@ function declarative(root: string, file: ts.SourceFile): void {
 export async function loadUnits(root: string): Promise<UnitSnapshot> {
   await assertNoPendingUnitWrite(root)
   root = await realpath(root)
-  if (await readFile(join(root, 'suo/ontology.d.ts'), 'utf8') !== unitOntology) throw new Error('Unsupported ontology: use explicit Unit migration; do not weaken or replace declarations by hand')
+  const ontologyText = await readFile(join(root, 'suo/ontology.d.ts'), 'utf8'), legacy = ontologyText === legacyUnitOntology
+  if (ontologyText !== unitOntology && !legacy) throw new Error('Unsupported ontology: use explicit Unit migration; do not weaken or replace declarations by hand')
   const files = await sourceFiles(root), program = ts.createProgram(files, { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, strict: true, noEmit: true, skipLibCheck: true, types: [], verbatimModuleSyntax: true })
-  if (program.getSourceFile(join(root,'suo/ontology.d.ts'))?.text !== unitOntology) throw new Error('ontology changed during source capture')
+  if (program.getSourceFile(join(root,'suo/ontology.d.ts'))?.text !== ontologyText) throw new Error('ontology changed during source capture')
   const diagnostics = ts.getPreEmitDiagnostics(program)
   if (diagnostics.length) throw new Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, { getCanonicalFileName: f => f, getCurrentDirectory: () => root, getNewLine: () => '\n' }))
   for (const path of files) if (path.endsWith('.suo.ts')) declarative(root, program.getSourceFile(path)!)
@@ -79,6 +83,7 @@ export async function loadUnits(root: string): Promise<UnitSnapshot> {
   const unitRef = (value: Unit): string => { if (!units.has(value)) throw new Error('reference must import canonical rooted Unit object'); return value.id }
   const decisionRef = (value: SourceDecision): string => { if (!decisions.has(value)) throw new Error('reference must import canonical rooted Decision object'); return value.id }
   const snapshot = { ...source,
+    inputPolicy: legacy && source.inputPolicy && typeof source.inputPolicy === 'object' ? { ...source.inputPolicy, scope: 'repository' as const, sharedPaths: [] } : source.inputPolicy,
     decisions: source.decisions.map(d => { const { unit, prerequisites, ...rest } = d; return { ...rest, unitId: unitRef(unit), prerequisites: prerequisites.map(decisionRef) } }),
     containment: source.containment.map(e => ({ ...e, parent: unitRef(e.parent), child: unitRef(e.child) })),
     dependencies: source.dependencies.map(e => ({ ...e, consumer: unitRef(e.consumer), prerequisite: unitRef(e.prerequisite) })),
