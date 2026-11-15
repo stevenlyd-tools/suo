@@ -20,7 +20,7 @@ See [release process](https://github.com/stevenlyd-tools/suo/blob/main/docs/rele
 
 ### Changed
 
-- `explain` compares the Unit's own scoped inputs. Paths that entered or left the scope through a policy, coverage or document change are `included`/`excluded`. Its base search now also follows a merge commit's merged branch, where the binding was actually recorded, and for a binding translated by `rescope` the translated binding's base, so more bases are exact.
+- `explain` compares the Unit's own scoped inputs. Paths that entered or left the scope through a policy, coverage or document change are `included`/`excluded`. Its base search now also follows a merge commit's merged branch, where the binding was actually recorded, an older run of a binding restored by a revert, and for a binding translated by `rescope` the translated binding's base, so more bases are exact.
 - The generated ontology spells out `scope` and `sharedPaths`. The 0.10 ontology is still read as `scope: "repository", sharedPaths: []`.
 
 ### Breaking changes

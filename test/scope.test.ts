@@ -173,3 +173,10 @@ it('lists unmapped one-hop imports of mapped sources as an advisory only', async
   const { repo, snapshot } = await load(); snapshot.units[0]!.implementation.coverage.push({ criterionId: 'c', path: 'src/helper.ts', symbol: null, kind: 'source' }); await saveUnits(root, snapshot, repo.token); commit('Map helper')
   expect((await explainUnit(root, 'commit', 'HEAD', 'a')).unboundImports.map(i => i.path)).toEqual(['packages/lib/src/extra.ts', 'packages/lib/src/index.ts'])
 })
+
+it('rescope finds the exact base of a binding restored by a revert', async () => {
+  await record(['a'], paths); const recorded = commit('Record a')
+  await write('src/a.ts', 'export const v = 2\n'); await record(['a'], paths); commit('Change and rebind a')
+  git('checkout', recorded, '--', 'suo'); commit('Restore the earlier record')
+  expect((await rescopeUnits(root, (await load()).repo.token, declaredPolicy)).units).toMatchObject([{ unitId: 'a', result: 'translated', base: recorded, inputs: 'stale' }])
+})

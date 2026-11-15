@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readRepository, readCommitAuthority, loadRepositoryUnits } from './unit-checkout.js';
 import { inspectUnits, unitInputScopes } from './unit-core.js';
-import { canonical } from './unit-identity.js';
+import { canonical, digest } from './unit-identity.js';
 import { unboundImports } from './unit-imports.js';
 const git = (root, args) => execFileSync('git', ['-C', root, ...args], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
 const commit = (root, ref) => { try {
@@ -31,6 +31,21 @@ export async function findBindingCommit(root, start, unit, depth, cache = new Ma
         found = { commit: sha, snapshot };
     }
     return found;
+}
+/**
+ * An older first-parent run holding the same binding, separated from `before` by other bindings (a binding restored by a
+ * revert). Git's pickaxe on the Unit's authority file narrows the commits, so only candidates are loaded.
+ */
+async function findEarlierRun(root, before, unit, depth, cache) {
+    if (!unit.implementation.inputDigest)
+        return null;
+    const file = `suo/units/${digest(unit.id).slice(0, 20)}.suo.ts`;
+    for (const sha of git(root, ['log', '--first-parent', `--max-count=${depth}`, '--format=%H', `-S${unit.implementation.inputDigest}`, before, '--', file]).split('\n').filter(Boolean)) {
+        const snapshot = await authorityAt(root, sha, cache);
+        if (snapshot && binding(snapshot.units.find(u => u.id === unit.id)) === binding(unit))
+            return findBindingCommit(root, sha, unit, depth, cache);
+    }
+    return null;
 }
 /**
  * Trees that may hold the exact inputs of a committed binding, best first: the binding commit and its parent; when the
@@ -65,6 +80,12 @@ export async function* bindingBaseCandidates(root, found, unitId, depth, cache =
                 queue.push({ commit: inner.commit, holder: inner.snapshot, policy: f.policy });
         }
         const prior = parent ? await authorityAt(root, parent, cache) : null, priorUnit = prior?.units.find(u => u.id === unitId);
+        // A binding restored by a revert was recorded in an older run of the same binding.
+        if (parent && unit && binding(priorUnit) !== binding(unit)) {
+            const earlier = await findEarlierRun(root, parent, unit, depth, cache);
+            if (earlier)
+                queue.push({ commit: earlier.commit, holder: earlier.snapshot, policy: f.policy });
+        }
         if (parent && prior && priorUnit?.implementation.inputDigest && canonical(prior.inputPolicy) !== canonical(f.holder.inputPolicy)) {
             const translated = await findBindingCommit(root, parent, priorUnit, depth, cache);
             if (translated)
