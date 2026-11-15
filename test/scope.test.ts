@@ -1,4 +1,4 @@
-import { it, expect, beforeEach, afterEach, describe, vi } from 'vitest'
+import { it, expect, beforeEach, afterEach, describe } from 'vitest'
 import { mkdtemp, writeFile, readFile, rm, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,8 +12,6 @@ import { unitOntology, legacyUnitOntology } from '../src/unit-source.js'
 import { digest } from '../src/unit-identity.js'
 import type { InputPolicy, Unit, UnitSnapshot } from '../src/unit-model.js'
 
-// Each load compiles the TS authority; Git fixtures with several loads exceed the default timeout on busy runners.
-vi.setConfig({ testTimeout: 60_000 })
 let root: string
 const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' })
 const commit = (message: string) => { git('add', '-A'); git('commit', '-q', '-m', message); return git('rev-parse', 'HEAD').trim() }
@@ -124,4 +122,54 @@ it('finds the exact base of a binding recorded on a merged branch', async () => 
   expect((await explainUnit(root, 'commit', 'HEAD', 'a'))).toMatchObject({ bindingCommit: merge, inputs: { base: { commit: recorded, exact: true } } })
   const report = await rescopeUnits(root, (await load()).repo.token, declaredPolicy)
   expect(report.units).toEqual([{ unitId: 'a', result: 'translated', base: recorded, inputs: 'current' }])
+})
+
+it('rescope never launders an unreviewed remap into current', async () => {
+  await record(['a'], paths); commit('Record a')
+  await write('src/a.ts', 'export const v = 9\n'); commit('Change a')
+  await write('src/x.ts', 'export const x = 1\n'); commit('Untouched x')
+  // Swap the mapping to an unchanged file without rebinding: still stale under repository scope (suo/ is excluded).
+  const { repo, snapshot } = await load(); snapshot.units[0]!.implementation.coverage = [{ criterionId: 'c', path: 'src/x.ts', symbol: null, kind: 'source' }]; await saveUnits(root, snapshot, repo.token); commit('Remap a')
+  expect((await applicability('commit')).a).toBe('stale')
+  const report = await rescopeUnits(root, (await load()).repo.token, declaredPolicy)
+  expect(report.units).toMatchObject([{ unitId: 'a', result: 'translated', inputs: 'stale' }])
+  expect((await applicability()).a).toBe('stale')
+})
+
+it('rescope keeps a committed remap stale even when the old binding is still current', async () => {
+  await write('src/x.ts', 'export const x = 1\n'); await record(['a'], paths); commit('Record a')
+  const { repo, snapshot } = await load(); snapshot.units[0]!.implementation.coverage = [{ criterionId: 'c', path: 'src/x.ts', symbol: null, kind: 'source' }]; await saveUnits(root, snapshot, repo.token); commit('Remap a')
+  expect((await applicability('commit')).a).toBe('current')
+  expect((await rescopeUnits(root, (await load()).repo.token, declaredPolicy)).units).toMatchObject([{ unitId: 'a', result: 'translated', base: 'working-tree', inputs: 'stale' }])
+})
+
+it('explains a rescoped binding whose original was recorded on a merged branch with an exact base', async () => {
+  // Only the branch's record commit holds a.ts as it was bound: not the merge, its parents or the rescope commit.
+  git('checkout', '-q', '-b', 'feature'); await write('src/a.ts', 'export const v = 1\n'); commit('Branch edits a')
+  await record(['a'], paths); const recorded = commit('Record on branch')
+  await write('src/a.ts', 'export const v = 2\n'); commit('Branch edits a again without rebinding')
+  git('checkout', '-q', 'main'); await write('src/c.ts', 'main work\n'); commit('Main moves on')
+  git('merge', '-q', '--no-ff', '-m', 'Merge feature', 'feature')
+  expect((await rescopeUnits(root, (await load()).repo.token, declaredPolicy)).units).toMatchObject([{ unitId: 'a', result: 'translated', base: recorded, inputs: 'stale' }])
+  commit('Rescope')
+  expect((await explainUnit(root, 'commit', 'HEAD', 'a')).inputs).toMatchObject({ base: { commit: recorded, exact: true }, changes: [{ path: 'src/a.ts', change: 'modified' }] })
+})
+
+it('fails inspection on a shared path that matches no file', async () => {
+  await setPolicy({ ...declaredPolicy, sharedPaths: ['shared'] }); await rm(join(root, 'shared'), { recursive: true }); commit('Drop shared')
+  const repo = await readRepository(root, 'commit'), s = await loadRepositoryUnits(repo)
+  expect(() => inspectUnits(s, repo.context)).toThrow(/dangling shared input: shared/)
+})
+
+it('lists unmapped one-hop imports of mapped sources as an advisory only', async () => {
+  await mkdir(join(root, 'packages/lib/src'), { recursive: true })
+  await write('packages/lib/package.json', JSON.stringify({ name: '@x/lib', exports: { '.': './src/index.ts', './extra': { import: './src/extra.ts' } } }))
+  await write('packages/lib/src/index.ts', 'export const i = 1\n'); await write('packages/lib/src/extra.ts', 'export const e = 1\n')
+  await write('src/a.ts', "import { h } from './helper.js'\nimport { i } from '@x/lib'\nimport { e } from '@x/lib/extra'\nimport 'react'\nexport const v = h + i + e\n")
+  await setPolicy(declaredPolicy); await record(['a'], paths); commit('Imports')
+  const explained = await explainUnit(root, 'commit', 'HEAD', 'a')
+  expect(explained.applicability).toBe('current')
+  expect(explained.unboundImports).toEqual([{ from: 'src/a.ts', path: 'packages/lib/src/extra.ts' }, { from: 'src/a.ts', path: 'packages/lib/src/index.ts' }, { from: 'src/a.ts', path: 'src/helper.ts' }])
+  const { repo, snapshot } = await load(); snapshot.units[0]!.implementation.coverage.push({ criterionId: 'c', path: 'src/helper.ts', symbol: null, kind: 'source' }); await saveUnits(root, snapshot, repo.token); commit('Map helper')
+  expect((await explainUnit(root, 'commit', 'HEAD', 'a')).unboundImports.map(i => i.path)).toEqual(['packages/lib/src/extra.ts', 'packages/lib/src/index.ts'])
 })

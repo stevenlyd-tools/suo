@@ -39,9 +39,13 @@ export async function rescopeUnits(root, expectedToken, inputPolicy, depth = 200
             continue;
         const old = before.units.find(u => u.id === unit.id);
         // The binding's own snapshot (its policy and mapping) and the trees that may reproduce it.
+        // `snapshot` reproduces the recorded fingerprint; `mapping` is the coverage/documents the binding was recorded with.
         let bases;
-        if (scopedInputs(before, repository.context, old).identity === recorded)
-            bases = (async function* () { yield { label: 'working-tree', snapshot: before, context: async () => repository.context }; })();
+        if (scopedInputs(before, repository.context, old).identity === recorded) {
+            // Current in the working tree; a committed binding's mapping is the one from the commit that recorded it.
+            const recordedIn = start ? (await findBindingCommit(root, start, old, depth, cache))?.snapshot ?? before : before;
+            bases = (async function* () { yield { label: 'working-tree', snapshot: before, mapping: recordedIn, context: async () => repository.context }; })();
+        }
         else {
             const found = start ? await findBindingCommit(root, start, old, depth, cache) : null;
             if (!found) {
@@ -49,7 +53,7 @@ export async function rescopeUnits(root, expectedToken, inputPolicy, depth = 200
                 continue;
             }
             bases = (async function* () { for await (const base of bindingBaseCandidates(root, found, unit.id, depth, cache))
-                yield { label: base.commit, snapshot: base.snapshot, context: () => contextAt(base.commit) }; })();
+                yield { label: base.commit, snapshot: base.snapshot, mapping: base.snapshot, context: () => contextAt(base.commit) }; })();
         }
         let outcome = { unitId: unit.id, result: 'kept', reason: 'recorded input fingerprint is not exactly reproduced by any candidate base (binding commit, its parent, the merged branch or a translated binding)' };
         for await (const base of bases) {
@@ -63,7 +67,16 @@ export async function rescopeUnits(root, expectedToken, inputPolicy, depth = 200
             }
             if (prior.identity !== recorded)
                 continue;
-            const next = scopedInputs(after, context, unit), vouched = new Set(prior.inputs.map(e => e.path)), unvouched = next.inputs.filter(e => !vouched.has(e.path)).map(e => e.path);
+            // Translate the mapping the binding was recorded with, never a later unreviewed remap: that must keep reading stale.
+            const recordedUnit = base.mapping.units.find(u => u.id === unit.id) ?? old;
+            let next;
+            try {
+                next = scopedInputs({ ...base.mapping, inputPolicy }, context, recordedUnit);
+            }
+            catch {
+                continue;
+            }
+            const vouched = new Set(prior.inputs.map(e => e.path)), unvouched = next.inputs.filter(e => !vouched.has(e.path)).map(e => e.path);
             if (unvouched.length) {
                 outcome = { unitId: unit.id, result: 'kept', reason: `new policy binds inputs the old binding did not: ${unvouched.slice(0, 5).join(', ')}${unvouched.length > 5 ? ', ...' : ''}` };
                 break;

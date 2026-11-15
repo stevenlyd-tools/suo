@@ -20,8 +20,13 @@ try {
  // Declared scope: translate the binding, then only the Unit's own mapping drives applicability; a deleted mapping still fails check.
  const policy={nonRuntimePaths:[],rationale:'Each Unit binds its own mapping',scope:'declared',sharedPaths:[]}
  await writeFile(envelope,JSON.stringify({expectedToken:JSON.parse(run('inspect','--target','working-tree')).expectedToken,inputPolicy:policy}));const rescoped=JSON.parse(run('rescope',envelope,'--yes'));assert.equal(rescoped.units[0].result,'translated');assert.equal(rescoped.units[0].inputs,'stale')
- await writeFile(envelope,JSON.stringify({expectedToken:JSON.parse(run('inspect','--target','working-tree')).expectedToken,unitId:'bounded',state:'implemented',coverage:[{criterionId:'app',path:'app.ts',symbol:'app',kind:'source'}],gaps:[]}));run('record',envelope,'--yes');git('add','.');git('commit','-m','Declared scope')
- await writeFile(join(root,'other.ts'),'export const other = 1\n');git('add','.');git('commit','-m','Unrelated');assert.equal(JSON.parse(run('check')).units[0].applicability,'current')
+ // record binds the fingerprint of the coverage it records (here newly including lib.ts), and lists unmapped direct imports.
+ await writeFile(join(root,'app.ts'),"import { helper } from './helper.js'\nexport const app = helper\n");await writeFile(join(root,'helper.ts'),'export const helper = true\n');await writeFile(join(root,'lib.ts'),'export const lib = 1\n')
+ await writeFile(envelope,JSON.stringify({expectedToken:JSON.parse(run('inspect','--target','working-tree')).expectedToken,unitId:'bounded',state:'implemented',coverage:[{criterionId:'app',path:'app.ts',symbol:'app',kind:'source'},{criterionId:'app',path:'lib.ts',symbol:null,kind:'source'}],gaps:[]}))
+ assert.deepEqual(JSON.parse(run('record',envelope,'--yes')).unboundImports,[{from:'app.ts',path:'helper.ts'}]);git('add','.');git('commit','-m','Declared scope')
+ assert.equal(JSON.parse(run('check')).units[0].applicability,'current')
+ await writeFile(join(root,'other.ts'),'export const other = 1\n');await writeFile(join(root,'helper.ts'),'export const helper = false\n');git('add','.');git('commit','-m','Unrelated and unmapped');assert.equal(JSON.parse(run('check')).units[0].applicability,'current')
+ await writeFile(join(root,'lib.ts'),'export const lib = 2\n');assert.equal(JSON.parse(run('inspect','--target','working-tree')).units[0].applicability,'stale');git('checkout','--','lib.ts')
  git('rm','-q','app.ts');git('commit','-m','Delete mapped file');assert.throws(()=>run('check'),/dangling source reference: bounded\/app.ts/)
  assert.equal(JSON.parse(run('writer','check','--skill',resolve(cli,'../../skills/suo'))).skill.matches,true)
  }finally{await rm(envelope,{force:true})}

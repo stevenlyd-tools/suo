@@ -208,6 +208,9 @@ export function inspectUnits(s, context) {
         definitions.set(id, phaseDigests.get(JSON.stringify([id, 'own'])));
         composites.set(id, phaseDigests.get(JSON.stringify([id, 'implementation'])));
     }
+    for (const shared of s.inputPolicy.sharedPaths)
+        if (!context.entries.some(e => e.path === shared || e.path.startsWith(`${shared}/`)))
+            throw new Error(`dangling shared input: ${shared}`);
     const inputDigest = inputIdentity(s, context), scopes = unitInputScopes(s, context), entryIndex = new Map(context.entries.map(e => [e.path, e])), paths = new Set(context.entries.map(e => e.path)), result = new Map();
     for (const id of ids) {
         const u = units.get(id), blockers = [], definitionDigest = definitions.get(id);

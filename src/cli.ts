@@ -7,6 +7,7 @@ import { readRepository, loadRepositoryUnits } from './unit-checkout.js'
 import { inspectUnits, validateUnits, unitInputScopes } from './unit-core.js'
 import { explainUnit } from './unit-explain.js'
 import { rescopeUnits } from './unit-rescope.js'
+import { unboundImports } from './unit-imports.js'
 import { inputPolicyShape } from './unit-model.js'
 import { saveUnits, recoverUnits, createUnitTemplate } from './unit-store.js'
 import { assertShape, object, string, literals, array, nullable } from './unit-shape.js'
@@ -51,7 +52,9 @@ async function main(){
    unit.implementation={state:input.state,coverage:input.coverage,gaps:input.gaps,definitionDigest:null,inputDigest:null}
    if(input.state!=='unknown')unit.implementation={...unit.implementation,definitionDigest:bound.coverageDigest,inputDigest:unitInputScopes(snapshot,repo.context).identity(unit.id)}
   }
-  await saveUnits(root,snapshot,expectedToken);emit({saved:true,target:'working-tree',committed:false});return
+  await saveUnits(root,snapshot,expectedToken)
+  // Advisory for the recorded Unit: unmapped direct imports are not bound; map or share the ones that carry its behavior.
+  emit({saved:true,target:'working-tree',committed:false,...(command==='record'?{unboundImports:unboundImports(snapshot,repo,(input as {unitId:string}).unitId)}:{})});return
  }
  if(!['inspect','check','export','next','render'].includes(command)||args.length)throw new Error('unknown command/arguments; run --help')
  const repo=await readRepository(root,target as 'commit'|'index'|'working-tree',ref),snapshot=await loadRepositoryUnits(repo),projection=inspectUnits(snapshot,repo.context)

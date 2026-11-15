@@ -11,4 +11,5 @@ export * from './unit-schema.js';
 export * from './writer.js';
 export * from './unit-explain.js';
 export * from './unit-rescope.js';
+export * from './unit-imports.js';
 //# sourceMappingURL=index.js.map

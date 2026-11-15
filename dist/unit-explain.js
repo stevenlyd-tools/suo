@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readRepository, readCommitAuthority, loadRepositoryUnits } from './unit-checkout.js';
 import { inspectUnits, unitInputScopes } from './unit-core.js';
 import { canonical } from './unit-identity.js';
+import { unboundImports } from './unit-imports.js';
 const git = (root, args) => execFileSync('git', ['-C', root, ...args], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
 const commit = (root, ref) => { try {
     return git(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]).trim() || null;
@@ -34,38 +35,40 @@ export async function findBindingCommit(root, start, unit, depth, cache = new Ma
 /**
  * Trees that may hold the exact inputs of a committed binding, best first: the binding commit and its parent; when the
  * binding commit is a merge, the same search along the merged branch (where the binding was actually recorded); and when it
- * changed the input policy (a `rescope` translation), the bases of the binding it translated. At most `depth` searches.
+ * changed the input policy (a `rescope` translation), the bases of the binding it translated, fingerprinted with that
+ * binding's own mapping under the translating policy. Lazy, so callers stop at the first exact base. At most `depth` searches.
  */
 export async function* bindingBaseCandidates(root, found, unitId, depth, cache = new Map()) {
-    // Lazy: callers stop at the first exact base, so the common case loads no further authority.
-    const queue = [found], seen = new Set(), yielded = new Set();
-    const fresh = (c) => { const key = `${c.commit}\0${canonical(c.snapshot.inputPolicy)}`; if (yielded.has(key))
+    // `holder` holds the binding being followed through history; `policy` overrides its policy for a translated binding.
+    const queue = [{ commit: found.commit, holder: found.snapshot, policy: null }];
+    const seen = new Set(), yielded = new Set();
+    const fresh = (c) => { const key = canonical([c.commit, c.snapshot.inputPolicy, c.snapshot.units.find(u => u.id === unitId) ?? null]); if (yielded.has(key))
         return false; yielded.add(key); return true; };
     for (let searches = 0; queue.length && searches < depth; searches++) {
-        const f = queue.shift();
-        if (seen.has(f.commit))
+        const f = queue.shift(), test = f.policy ? { ...f.holder, inputPolicy: f.policy } : f.holder;
+        if (seen.has(canonical([f.commit, f.policy])))
             continue;
-        seen.add(f.commit);
+        seen.add(canonical([f.commit, f.policy]));
         const parent = commit(root, `${f.commit}^`), merged = commit(root, `${f.commit}^2`);
-        if (fresh(f))
-            yield f;
+        const here = { commit: f.commit, snapshot: test };
+        if (fresh(here))
+            yield here;
         if (parent) {
-            const p = { commit: parent, snapshot: f.snapshot };
+            const p = { commit: parent, snapshot: test };
             if (fresh(p))
                 yield p;
         }
-        const unit = f.snapshot.units.find(u => u.id === unitId);
+        const unit = f.holder.units.find(u => u.id === unitId);
         if (merged && parent && unit) {
             const inner = await findBindingCommit(root, merged, unit, depth, cache, parent);
             if (inner)
-                queue.push(inner);
+                queue.push({ commit: inner.commit, holder: inner.snapshot, policy: f.policy });
         }
         const prior = parent ? await authorityAt(root, parent, cache) : null, priorUnit = prior?.units.find(u => u.id === unitId);
-        if (parent && prior && priorUnit?.implementation.inputDigest && canonical(prior.inputPolicy) !== canonical(f.snapshot.inputPolicy)) {
-            // The translated fingerprint was taken with the rescope's own policy and mapping at the earlier binding's base.
+        if (parent && prior && priorUnit?.implementation.inputDigest && canonical(prior.inputPolicy) !== canonical(f.holder.inputPolicy)) {
             const translated = await findBindingCommit(root, parent, priorUnit, depth, cache);
             if (translated)
-                queue.push({ commit: translated.commit, snapshot: f.snapshot });
+                queue.push({ commit: translated.commit, holder: translated.snapshot, policy: f.policy ?? f.holder.inputPolicy });
         }
     }
 }
@@ -97,7 +100,7 @@ export async function explainUnit(root, target, ref, unitId, depth = 200) {
     const unit = snapshot.units.find(u => u.id === unitId), bound = projection.units.find(u => u.id === unitId);
     if (!unit || !bound)
         throw new Error('unknown Unit');
-    const result = { unitId, applicability: bound.applicability, unavailable: repository.context.unavailable, bindingCommit: null, definition: null, inputs: null, notice: 'Review guidance from Git history; not semantic proof, acceptance or permission to rebind.' };
+    const result = { unitId, applicability: bound.applicability, unavailable: repository.context.unavailable, bindingCommit: null, definition: null, inputs: null, unboundImports: unboundImports(snapshot, repository, unitId), notice: 'Review guidance from Git history; not semantic proof, acceptance or permission to rebind.' };
     if (unit.implementation.definitionDigest === null)
         return result;
     const definitionChanged = unit.implementation.definitionDigest !== bound.compositeDigest, inputsChanged = unit.implementation.inputDigest !== bound.inputDigest;

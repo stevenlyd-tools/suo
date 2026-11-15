@@ -1,3 +1,4 @@
+import { type UnboundImport } from './unit-imports.js';
 import type { CheckoutContext, Unit, UnitSnapshot } from './unit-model.js';
 type Target = CheckoutContext['target'];
 /** `excluded`/`included`: the file exists on both sides but the input policy changed whether it is bound. */
@@ -26,6 +27,8 @@ export interface UnitExplanation {
         policyChanged: boolean;
         changes: InputChange[];
     } | null;
+    /** Advisory: one-hop imports of mapped source files that are not bound inputs. Never affects applicability. */
+    unboundImports: UnboundImport[];
     notice: string;
 }
 /** Authority snapshots by commit, shared across walks; loading one compiles its TS authority. */
@@ -35,7 +38,7 @@ export declare function findBindingCommit(root: string, start: string, unit: Uni
     commit: string;
     snapshot: UnitSnapshot;
 } | null>;
-/** A tree that may hold a binding's exact inputs, and the snapshot whose policy and mapping the recorded fingerprint used. */
+/** A tree that may hold a binding's exact inputs, and the snapshot (policy and mapping) its recorded fingerprint used there. */
 export interface BindingBase {
     commit: string;
     snapshot: UnitSnapshot;
@@ -43,7 +46,8 @@ export interface BindingBase {
 /**
  * Trees that may hold the exact inputs of a committed binding, best first: the binding commit and its parent; when the
  * binding commit is a merge, the same search along the merged branch (where the binding was actually recorded); and when it
- * changed the input policy (a `rescope` translation), the bases of the binding it translated. At most `depth` searches.
+ * changed the input policy (a `rescope` translation), the bases of the binding it translated, fingerprinted with that
+ * binding's own mapping under the translating policy. Lazy, so callers stop at the first exact base. At most `depth` searches.
  */
 export declare function bindingBaseCandidates(root: string, found: {
     commit: string;
