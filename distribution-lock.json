@@ -3,7 +3,7 @@
   "version": "0.11.0",
   "files": {
     ".claude-plugin/plugin.json": "3a7dc4c4fc06f7fcd499ca59700b507372e2730ad41779ad18425382f2216e6b",
-    "CHANGELOG.md": "f84851178913e36ac6bca15a5eadd0c7d48d9531cf4d6893ded9ba112df5850d",
+    "CHANGELOG.md": "885962ca02b54c852743a9a63aa9d4b5a075406af09e14efbf578441372d3f0e",
     "LICENSE": "6e4f7d62e5ac28bdcf4b71c4d81deade0a89c36aea3988f34d1ff73d5a1d4145",
     "README.md": "e319910241d93dde2dd40b2b0e3b12883119a29e4bc9718c5d68fc3364aa8e9a",
     "dist/cli.d.ts": "43e818adf60173644896298637f47b01d5819b17eda46eaa32d0c7d64724d012",
