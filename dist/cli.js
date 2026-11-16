@@ -4,8 +4,11 @@ import { renderUnits } from './unit-render.js';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { readRepository, loadRepositoryUnits } from './unit-checkout.js';
-import { inspectUnits, validateUnits } from './unit-core.js';
+import { inspectUnits, validateUnits, unitInputScopes } from './unit-core.js';
 import { explainUnit } from './unit-explain.js';
+import { rescopeUnits } from './unit-rescope.js';
+import { unboundImports } from './unit-imports.js';
+import { inputPolicyShape } from './unit-model.js';
 import { saveUnits, recoverUnits, createUnitTemplate } from './unit-store.js';
 import { assertShape, object, string, literals, array, nullable } from './unit-shape.js';
 const emit = (value) => process.stdout.write(JSON.stringify(value, null, 2) + '\n');
@@ -23,7 +26,7 @@ async function main() {
         throw new Error('target must be commit, index or working-tree');
     const command = args.shift() ?? 'help';
     if (command === 'help' || command === '--help') {
-        console.log('suo --version\nsuo --root PROJECT [--target commit|index|working-tree] [--ref REF] inspect|check|export|next|render\nsuo --root PROJECT [--target commit|index|working-tree] [--ref REF] explain UNIT_ID [--depth N]\nsuo --root PROJECT apply ENVELOPE.json --yes\nsuo --root PROJECT record ENVELOPE.json --yes\nsuo --root PROJECT recover\nsuo --root PROJECT writer check [--skill SKILL_PACKAGE_OR_DIRECTORY]\nsuo --root PROJECT writer record --yes\nsuo template DIRECTORY --title TITLE\nCommit inspection is read-only. Working-tree is an explicit candidate, never HEAD. External CI/deployment state is not persisted.');
+        console.log('suo --version\nsuo --root PROJECT [--target commit|index|working-tree] [--ref REF] inspect|check|export|next|render\nsuo --root PROJECT [--target commit|index|working-tree] [--ref REF] explain UNIT_ID [--depth N]\nsuo --root PROJECT apply ENVELOPE.json --yes\nsuo --root PROJECT record ENVELOPE.json --yes\nsuo --root PROJECT rescope ENVELOPE.json --yes|--dry-run [--depth N]\nsuo --root PROJECT recover\nsuo --root PROJECT writer check [--skill SKILL_PACKAGE_OR_DIRECTORY]\nsuo --root PROJECT writer record --yes\nsuo template DIRECTORY --title TITLE\nCommit inspection is read-only. Working-tree is an explicit candidate, never HEAD. External CI/deployment state is not persisted.');
         return;
     }
     if (command === 'writer') {
@@ -52,6 +55,15 @@ async function main() {
         emit(await explainUnit(root, target, ref, unitId, Number(depth)));
         return;
     }
+    if (command === 'rescope') {
+        const depth = option('--depth', '200'), path = args.shift(), mode = args.shift();
+        if (!path || args.length || !['--yes', '--dry-run'].includes(mode ?? '') || !/^[1-9]\d*$/.test(depth))
+            throw new Error('rescope requires envelope path, --yes or --dry-run, and an optional positive --depth');
+        const input = JSON.parse(await readFile(path, 'utf8'));
+        assertShape(object({ expectedToken: string(), inputPolicy: inputPolicyShape }), input);
+        emit(await rescopeUnits(root, input.expectedToken, input.inputPolicy, Number(depth), mode === '--yes'));
+        return;
+    }
     if (command === 'recover') {
         if (args.length)
             throw new Error('unexpected recover arguments');
@@ -63,7 +75,7 @@ async function main() {
         const destination = resolve(args.shift() ?? ''), title = option('--title');
         if (!title || args.length)
             throw new Error('template requires destination and --title');
-        const s = { schemaVersion: 5, product: { id: 'product', title }, units: [], decisions: [], containment: [], dependencies: [], inputPolicy: { nonRuntimePaths: [], rationale: 'All repository inputs except Suo authority and generated views; these must not be runtime inputs.' } };
+        const s = { schemaVersion: 5, product: { id: 'product', title }, units: [], decisions: [], containment: [], dependencies: [], inputPolicy: { nonRuntimePaths: [], rationale: 'All repository inputs except Suo authority and generated views; these must not be runtime inputs.', scope: 'repository', sharedPaths: [] } };
         await createUnitTemplate(destination, s);
         emit({ template: destination });
         return;
@@ -91,10 +103,14 @@ async function main() {
             const projection = inspectUnits(snapshot, repo.context), unit = snapshot.units.find(u => u.id === input.unitId), bound = projection.units.find(u => u.id === input.unitId);
             if (!unit || !bound)
                 throw new Error('unknown Unit');
-            unit.implementation = { state: input.state, coverage: input.coverage, gaps: input.gaps, definitionDigest: input.state === 'unknown' ? null : bound.coverageDigest, inputDigest: input.state === 'unknown' ? null : projection.inputDigest };
+            // A declared input scope follows the new coverage, so the Unit's fingerprint is taken after applying it.
+            unit.implementation = { state: input.state, coverage: input.coverage, gaps: input.gaps, definitionDigest: null, inputDigest: null };
+            if (input.state !== 'unknown')
+                unit.implementation = { ...unit.implementation, definitionDigest: bound.coverageDigest, inputDigest: unitInputScopes(snapshot, repo.context).identity(unit.id) };
         }
         await saveUnits(root, snapshot, expectedToken);
-        emit({ saved: true, target: 'working-tree', committed: false });
+        // Advisory for the recorded Unit: unmapped direct imports are not bound; map or share the ones that carry its behavior.
+        emit({ saved: true, target: 'working-tree', committed: false, ...(command === 'record' ? { unboundImports: unboundImports(snapshot, repo, input.unitId) } : {}) });
         return;
     }
     if (!['inspect', 'check', 'export', 'next', 'render'].includes(command) || args.length)

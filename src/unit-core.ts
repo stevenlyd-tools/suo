@@ -1,5 +1,5 @@
 import { assertShape } from './unit-shape.js'
-import { unitSnapshotShape, checkoutShape, type UnitSnapshot, type CheckoutContext, type UnitProjection } from './unit-model.js'
+import { unitSnapshotShape, checkoutShape, type UnitSnapshot, type CheckoutContext, type UnitProjection, type InputPolicy } from './unit-model.js'
 import { topological } from './unit-graph.js'
 import { digest } from './unit-identity.js'
 const hex = /^[a-f0-9]{64}$/
@@ -46,6 +46,10 @@ export function validateUnits(value: unknown): asserts value is UnitSnapshot {
   }
   unique(s.inputPolicy.nonRuntimePaths, 'input exclusion')
   for (const path of s.inputPolicy.nonRuntimePaths) repositoryPath(path)
+  unique(s.inputPolicy.sharedPaths, 'shared input')
+  if (s.inputPolicy.scope === 'repository' && s.inputPolicy.sharedPaths.length) throw new Error('shared inputs require declared input scope')
+  const excluded = excludedInput(s)
+  for (const path of s.inputPolicy.sharedPaths) { repositoryPath(path); if (excluded(path)) throw new Error(`shared input excluded or self-referential: ${path}`) }
   phaseOrder(s)
 }
 /** Contract is a local boundary, not the parent's aggregate completion. */
@@ -59,7 +63,9 @@ function phaseGraph(s: UnitSnapshot): {nodes:string[];edges:Array<readonly [stri
   return {nodes:s.units.flatMap(u => phases.map(p => key(u.id, p))),edges:[...edges.values()]} 
 }
 export function phaseOrder(s: UnitSnapshot): string[] { assertShape(unitSnapshotShape,s); const graph=phaseGraph(s); return topological(graph.nodes,graph.edges) }
-export function inputIdentity(s: UnitSnapshot, context: CheckoutContext): string {
+type BoundEntry = Omit<CheckoutContext['entries'][number], 'symbols'>
+const byPath = (a: { path: string }, b: { path: string }) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+function validateContext(s: UnitSnapshot, context: CheckoutContext): void {
   assertShape(unitSnapshotShape,s)
   assertShape(checkoutShape, context)
   if (!(context.target === 'commit' ? /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/ : /^[a-f0-9]{64}$/).test(context.identity)) throw new Error('invalid checkout identity')
@@ -67,13 +73,37 @@ export function inputIdentity(s: UnitSnapshot, context: CheckoutContext): string
   for (const entry of context.entries) { repositoryPath(entry.path); if (seen.has(entry.path) || !hex.test(entry.digest)) throw new Error('invalid or duplicate input entry'); seen.add(entry.path) }
   const excluded = excludedInput(s)
   for (const unit of s.units) for (const ref of unit.implementation.coverage) if (excluded(ref.path)) throw new Error(`coverage input excluded or self-referential: ${ref.path}`)
-  return digest({ policy: s.inputPolicy, entries: boundInputs(s, context) })
+}
+/** 0.10 bindings hashed `{nonRuntimePaths, rationale}`; the default repository scope keeps that identity so existing bindings keep their applicability. */
+const policyIdentity = (p: InputPolicy) => p.scope === 'repository' && !p.sharedPaths.length ? { nonRuntimePaths: p.nonRuntimePaths, rationale: p.rationale } : p
+/** Whole-repository fingerprint: every bound file under this snapshot's exclusions. Under `repository` scope it is also every Unit's input fingerprint. */
+export function inputIdentity(s: UnitSnapshot, context: CheckoutContext): string {
+  validateContext(s, context)
+  return digest({ policy: policyIdentity(s.inputPolicy), entries: boundInputs(s, context) })
 }
 const excludedInput = (s: UnitSnapshot) => (path: string) => path.startsWith('suo/') || path.startsWith('docs/suo/') || s.inputPolicy.nonRuntimePaths.some(p => path === p || path.startsWith(`${p}/`))
-/** The sorted entries an implementation binding fingerprints under this snapshot's input policy. */
-export function boundInputs(s: UnitSnapshot, context: CheckoutContext): Array<Omit<CheckoutContext['entries'][number], 'symbols'>> {
+/** The sorted entries a whole-repository binding fingerprints under this snapshot's input policy. */
+export function boundInputs(s: UnitSnapshot, context: CheckoutContext): BoundEntry[] {
   const excluded = excludedInput(s)
-  return context.entries.filter(e => !excluded(e.path)).map(({symbols: _, ...entry}) => entry).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+  return context.entries.filter(e => !excluded(e.path)).map(({symbols: _, ...entry}) => entry).sort(byPath)
+}
+/**
+ * Per-Unit input scopes. `repository`: every bound file. `declared`: the Unit's own coverage paths and documents plus
+ * every file under `sharedPaths`, minus exclusions. Imports of mapped files are deliberately not followed; map them or share them.
+ * Cost: one pass over entries, then each Unit's own paths plus the shared entries.
+ */
+export function unitInputScopes(s: UnitSnapshot, context: CheckoutContext): { inputs(unitId: string): BoundEntry[]; identity(unitId: string): string } {
+  validateContext(s, context)
+  const all = boundInputs(s, context), policy = policyIdentity(s.inputPolicy), units = new Map(s.units.map(u => [u.id, u]))
+  const unitOf = (id: string) => { const u = units.get(id); if (!u) throw new Error(`unknown Unit: ${id}`); return u }
+  if (s.inputPolicy.scope === 'repository') { const identity = digest({ policy, entries: all }); return { inputs: id => { unitOf(id); return all }, identity: id => { unitOf(id); return identity } } }
+  const index = new Map(all.map(e => [e.path, e])), shared = all.filter(e => s.inputPolicy.sharedPaths.some(p => e.path === p || e.path.startsWith(`${p}/`)))
+  const inputs = (id: string) => {
+    const u = unitOf(id), selected = new Map(shared.map(e => [e.path, e]))
+    for (const path of [...u.implementation.coverage.map(c => c.path), ...u.documents]) { const entry = index.get(path); if (entry) selected.set(path, entry) }
+    return [...selected.values()].sort(byPath)
+  }
+  return { inputs, identity: id => digest({ policy, entries: inputs(id) }) }
 }
 /** Pure projection: no clock, network, provider status or mutation. */
 export function inspectUnits(s: UnitSnapshot, context: CheckoutContext): { schemaVersion: 5; target: CheckoutContext['target']; identity: string; inputDigest: string; units: UnitProjection[]; verification: string } {
@@ -110,7 +140,8 @@ export function inspectUnits(s: UnitSnapshot, context: CheckoutContext): { schem
   }
   const composites = new Map<string,string>()
   for (const id of ids) { definitions.set(id,phaseDigests.get(JSON.stringify([id,'own']))!);composites.set(id,phaseDigests.get(JSON.stringify([id,'implementation']))!) }
-  const inputDigest = inputIdentity(s, context), entryIndex = new Map(context.entries.map(e => [e.path,e])), paths = new Set(context.entries.map(e => e.path)), result = new Map<string, UnitProjection>()
+  for (const shared of s.inputPolicy.sharedPaths) if (!context.entries.some(e => e.path === shared || e.path.startsWith(`${shared}/`))) throw new Error(`dangling shared input: ${shared}`)
+  const inputDigest = inputIdentity(s, context), scopes = unitInputScopes(s, context), entryIndex = new Map(context.entries.map(e => [e.path,e])), paths = new Set(context.entries.map(e => e.path)), result = new Map<string, UnitProjection>()
   for (const id of ids) {
     const u = units.get(id)!, blockers: string[] = [], definitionDigest = definitions.get(id)!
     for (const ref of u.implementation.coverage) {
@@ -119,14 +150,14 @@ export function inspectUnits(s: UnitSnapshot, context: CheckoutContext): { schem
       if (ref.symbol !== null && !entryIndex.get(ref.path)!.symbols?.includes(ref.symbol)) throw new Error(`unresolved source symbol: ${id}/${ref.path}/${ref.symbol}`)
     }
     for (const path of u.documents) { if (!paths.has(path)) throw new Error(`dangling document reference: ${id}/${path}`); if (!['100644','100755'].includes(entryIndex.get(path)!.mode)) throw new Error(`document must reference a regular file: ${path}`) }
-    const current = !context.unavailable.length && u.implementation.definitionDigest === composites.get(id) && u.implementation.inputDigest === inputDigest
+    const unitInputDigest = scopes.identity(id), current = !context.unavailable.length && u.implementation.definitionDigest === composites.get(id) && u.implementation.inputDigest === unitInputDigest
     const applicability = u.implementation.definitionDigest === null || context.unavailable.length ? 'unknown' : current ? 'current' : 'stale'
     if (u.definition.scope !== 'bounded') blockers.push('scope is open')
     if (!u.definition.behavior.length || !u.definition.criteria.length) blockers.push('behavior/criteria incomplete')
     if (!['approved', 'experimental'].includes(u.definition.decision)) blockers.push('scope not selected for execution')
     if (byUnit.get(id)!.some(d => ['open', 'proposed'].includes(d.status) || d.prerequisites.some(p => !decisionReady.get(p)))) blockers.push('unresolved product decision')
     if (context.unavailable.length) blockers.push('code inputs unavailable')
-    result.set(id, { id, title: u.title, definitionDigest, compositeDigest: composites.get(id)!, coverageDigest: composites.get(id)!, declaredState: u.implementation.state, applicability, implemented: current && u.implementation.state === 'implemented', startReady: blockers.length === 0, blockers, verificationBlockers: [], acceptanceBlockers: [], semanticReviewRequired: semanticRequired.get(id)! })
+    result.set(id, { id, title: u.title, definitionDigest, compositeDigest: composites.get(id)!, coverageDigest: composites.get(id)!, inputDigest: unitInputDigest, declaredState: u.implementation.state, applicability, implemented: current && u.implementation.state === 'implemented', startReady: blockers.length === 0, blockers, verificationBlockers: [], acceptanceBlockers: [], semanticReviewRequired: semanticRequired.get(id)! })
   }
   // Inherited finite-domain constraints use enter/exit restoration, not ancestor copies.
   const domains = new Map<string, Set<string>>(), stack: Array<{ id: string; exit: boolean; restore?: Array<[string, Set<string> | undefined]> }> = []

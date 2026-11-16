@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { readRepository, readCommitAuthority, loadRepositoryUnits } from './unit-checkout.js';
-import { inspectUnits, inputIdentity, boundInputs } from './unit-core.js';
-import { canonical } from './unit-identity.js';
+import { inspectUnits, unitInputScopes } from './unit-core.js';
+import { canonical, digest } from './unit-identity.js';
+import { unboundImports } from './unit-imports.js';
 const git = (root, args) => execFileSync('git', ['-C', root, ...args], { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
 const commit = (root, ref) => { try {
     return git(root, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]).trim() || null;
@@ -10,24 +11,114 @@ catch {
     return null;
 } };
 const binding = (u) => u ? canonical([u.implementation.definitionDigest, u.implementation.inputDigest]) : null;
-/** Newest-first walk over authority-changing first-parent commits; returns the oldest commit of the contiguous run still holding this binding. */
-async function findBindingCommit(root, start, unit, depth) {
+const authorityAt = (root, sha, cache) => {
+    let loaded = cache.get(sha);
+    // Authority this client cannot read (an older schema, or none) cannot hold the current binding.
+    if (!loaded) {
+        loaded = readCommitAuthority(root, sha).then(loadRepositoryUnits).catch(() => null);
+        cache.set(sha, loaded);
+    }
+    return loaded;
+};
+/** Newest-first walk over authority-changing first-parent commits (optionally not reachable from `exclude`); returns the oldest commit of the contiguous run still holding this binding. */
+export async function findBindingCommit(root, start, unit, depth, cache = new Map(), exclude) {
     const wanted = binding(unit);
     let found = null;
-    for (const sha of git(root, ['rev-list', '--first-parent', `--max-count=${depth}`, start, '--', 'suo']).split('\n').filter(Boolean)) {
-        let snapshot;
-        // Authority this client cannot read (an older schema, or none) cannot hold the current binding.
-        try {
-            snapshot = await loadRepositoryUnits(await readCommitAuthority(root, sha));
-        }
-        catch {
-            break;
-        }
-        if (binding(snapshot.units.find(u => u.id === unit.id)) !== wanted)
+    for (const sha of git(root, ['rev-list', '--first-parent', `--max-count=${depth}`, start, ...(exclude ? [`^${exclude}`] : []), '--', 'suo']).split('\n').filter(Boolean)) {
+        const snapshot = await authorityAt(root, sha, cache);
+        if (!snapshot || binding(snapshot.units.find(u => u.id === unit.id)) !== wanted)
             break;
         found = { commit: sha, snapshot };
     }
     return found;
+}
+/**
+ * An older first-parent run holding the same binding, separated from `before` by other bindings (a binding restored by a
+ * revert). Git's pickaxe on the Unit's authority file narrows the commits, so only candidates are loaded.
+ */
+async function findEarlierRun(root, before, unit, depth, cache) {
+    if (!unit.implementation.inputDigest)
+        return null;
+    const file = `suo/units/${digest(unit.id).slice(0, 20)}.suo.ts`;
+    for (const sha of git(root, ['log', '--first-parent', `--max-count=${depth}`, '--format=%H', `-S${unit.implementation.inputDigest}`, before, '--', file]).split('\n').filter(Boolean)) {
+        const snapshot = await authorityAt(root, sha, cache);
+        if (snapshot && binding(snapshot.units.find(u => u.id === unit.id)) === binding(unit))
+            return findBindingCommit(root, sha, unit, depth, cache);
+    }
+    return null;
+}
+const mappingKey = (u) => u ? canonical([[...new Set(u.implementation.coverage.map(c => c.path))].sort(), [...u.documents].sort()]) : null;
+/**
+ * The snapshot holding the mapping a committed binding was recorded with, or null when it cannot be determined. A binding
+ * that a merge commit introduces was recorded on the merged branch: that branch's recording commit must hold the binding
+ * with the same mapping as the merge, else the merge may carry an unreviewed remap and the mapping is unknown.
+ */
+export async function recordedMapping(root, found, unitId, depth, cache = new Map()) {
+    let current = found;
+    for (let hops = 0; hops < depth; hops++) {
+        const parent = commit(root, `${current.commit}^`), merged = commit(root, `${current.commit}^2`), unit = current.snapshot.units.find(u => u.id === unitId);
+        if (!merged || !parent)
+            return current.snapshot;
+        if (!unit)
+            return null;
+        const inner = await findBindingCommit(root, merged, unit, depth, cache, parent);
+        if (!inner || mappingKey(inner.snapshot.units.find(u => u.id === unitId)) !== mappingKey(unit))
+            return null;
+        current = inner;
+    }
+    return null;
+}
+/**
+ * Trees that may hold the exact inputs of a committed binding, best first: the binding commit and its parent; when the
+ * binding commit is a merge, the same search along the merged branch (where the binding was actually recorded); and when it
+ * changed the input policy (a `rescope` translation), the bases of the binding it translated, fingerprinted with that
+ * binding's own mapping under the translating policy. Lazy, so callers stop at the first exact base. At most `depth` searches.
+ */
+export async function* bindingBaseCandidates(root, found, unitId, depth, cache = new Map()) {
+    // `holder` holds the binding being followed through history; `policy` overrides its policy for a translated binding.
+    const queue = [{ commit: found.commit, holder: found.snapshot, policy: null }];
+    const seen = new Set(), yielded = new Set();
+    const fresh = (c) => { const key = canonical([c.commit, c.snapshot.inputPolicy, c.snapshot.units.find(u => u.id === unitId) ?? null]); if (yielded.has(key))
+        return false; yielded.add(key); return true; };
+    for (let searches = 0; queue.length && searches < depth; searches++) {
+        const f = queue.shift(), test = f.policy ? { ...f.holder, inputPolicy: f.policy } : f.holder;
+        if (seen.has(canonical([f.commit, f.policy])))
+            continue;
+        seen.add(canonical([f.commit, f.policy]));
+        const parent = commit(root, `${f.commit}^`), merged = commit(root, `${f.commit}^2`);
+        const mappingKnown = (await recordedMapping(root, { commit: f.commit, snapshot: f.holder }, unitId, depth, cache)) !== null;
+        const here = { commit: f.commit, snapshot: test, mappingKnown };
+        if (fresh(here))
+            yield here;
+        if (parent) {
+            const p = { commit: parent, snapshot: test, mappingKnown };
+            if (fresh(p))
+                yield p;
+        }
+        const unit = f.holder.units.find(u => u.id === unitId);
+        if (merged && parent && unit) {
+            const inner = await findBindingCommit(root, merged, unit, depth, cache, parent);
+            if (inner)
+                queue.push({ commit: inner.commit, holder: inner.snapshot, policy: f.policy });
+        }
+        const prior = parent ? await authorityAt(root, parent, cache) : null, priorUnit = prior?.units.find(u => u.id === unitId);
+        // A binding restored by a revert was recorded in an older run of the same binding.
+        if (parent && unit && binding(priorUnit) !== binding(unit)) {
+            const earlier = await findEarlierRun(root, parent, unit, depth, cache);
+            if (earlier)
+                queue.push({ commit: earlier.commit, holder: earlier.snapshot, policy: f.policy });
+        }
+        if (parent && prior && priorUnit?.implementation.inputDigest && canonical(prior.inputPolicy) !== canonical(f.holder.inputPolicy)) {
+            const translated = await findBindingCommit(root, parent, priorUnit, depth, cache);
+            if (translated)
+                queue.push({ commit: translated.commit, holder: translated.snapshot, policy: f.policy ?? f.holder.inputPolicy });
+        }
+    }
+}
+/** The Unit's scoped inputs under `s`; a snapshot that predates the Unit is read with the Unit's current mapping. */
+export function scopedInputs(s, context, unit) {
+    const scopes = unitInputScopes(s.units.some(u => u.id === unit.id) ? s : { ...s, units: [...s.units, unit] }, context);
+    return { inputs: scopes.inputs(unit.id), identity: scopes.identity(unit.id) };
 }
 function compareInputs(before, after) {
     const old = new Map(before.bound.map(e => [e.path, e])), changes = [];
@@ -52,17 +143,17 @@ export async function explainUnit(root, target, ref, unitId, depth = 200) {
     const unit = snapshot.units.find(u => u.id === unitId), bound = projection.units.find(u => u.id === unitId);
     if (!unit || !bound)
         throw new Error('unknown Unit');
-    const result = { unitId, applicability: bound.applicability, unavailable: repository.context.unavailable, bindingCommit: null, definition: null, inputs: null, notice: 'Review guidance from Git history; not semantic proof, acceptance or permission to rebind.' };
+    const result = { unitId, applicability: bound.applicability, unavailable: repository.context.unavailable, bindingCommit: null, definition: null, inputs: null, unboundImports: unboundImports(snapshot, repository, unitId), notice: 'Review guidance from Git history; not semantic proof, acceptance or permission to rebind.' };
     if (unit.implementation.definitionDigest === null)
         return result;
-    const definitionChanged = unit.implementation.definitionDigest !== bound.compositeDigest, inputsChanged = unit.implementation.inputDigest !== projection.inputDigest;
+    const definitionChanged = unit.implementation.definitionDigest !== bound.compositeDigest, inputsChanged = unit.implementation.inputDigest !== bound.inputDigest;
     if (!definitionChanged && !inputsChanged) {
         result.definition = { changed: false, fields: [], decisionsChanged: false, comparedWith: null };
         result.inputs = { changed: false, base: null, policyChanged: false, changes: [] };
         return result;
     }
     const start = target === 'commit' ? repository.context.identity : commit(root, 'HEAD');
-    const found = start ? await findBindingCommit(root, start, unit, depth) : null;
+    const cache = new Map(), found = start ? await findBindingCommit(root, start, unit, depth, cache) : null;
     result.bindingCommit = found?.commit ?? null;
     // An uncommitted binding was recorded against a working state derived from HEAD; compare with it, marked inexact unless reproduced.
     const reference = found ?? (start && target !== 'commit' ? await loadRepositoryUnits(await readCommitAuthority(root, start)).then(snapshot => ({ commit: start, snapshot }), () => null) : null);
@@ -79,21 +170,21 @@ export async function explainUnit(root, target, ref, unitId, depth = 200) {
         result.inputs = { changed: inputsChanged, base: null, policyChanged: false, changes: [] };
         return result;
     }
-    const parent = found ? commit(root, `${found.commit}^`) : null, candidates = [];
-    for (const candidate of [reference.commit, ...(parent ? [parent] : [])]) {
-        const context = (await readRepository(root, 'commit', candidate)).context;
+    const candidates = [];
+    for await (const candidate of found ? bindingBaseCandidates(root, found, unitId, depth, cache) : [{ commit: reference.commit, snapshot: reference.snapshot, mappingKnown: true }]) {
+        const context = (await readRepository(root, 'commit', candidate.commit)).context;
         let exact = false;
         try {
-            exact = inputIdentity(reference.snapshot, context) === unit.implementation.inputDigest;
+            exact = scopedInputs(candidate.snapshot, context, unit).identity === unit.implementation.inputDigest;
         }
         catch { /* coverage no longer resolves there: not reproducible */ }
-        candidates.push({ commit: candidate, context, exact });
+        candidates.push({ ...candidate, context, exact });
         if (exact)
             break;
     }
-    // Without an exact base, the oldest candidate precedes every change made alongside the record, so it is the safer approximate base.
-    const base = candidates.find(c => c.exact) ?? candidates.at(-1);
-    result.inputs = { changed: true, base: { commit: base.commit, exact: base.exact }, policyChanged: canonical(reference.snapshot.inputPolicy) !== canonical(snapshot.inputPolicy), changes: compareInputs({ bound: boundInputs(reference.snapshot, base.context), context: base.context }, { bound: boundInputs(snapshot, repository.context), context: repository.context }) };
+    // Without an exact base, the binding commit's parent precedes every change made alongside the record, so it is the safer approximate base.
+    const base = candidates.find(c => c.exact) ?? candidates[Math.min(1, candidates.length - 1)];
+    result.inputs = { changed: true, base: { commit: base.commit, exact: base.exact }, policyChanged: canonical(reference.snapshot.inputPolicy) !== canonical(snapshot.inputPolicy), changes: compareInputs({ bound: scopedInputs(base.snapshot, base.context, unit).inputs, context: base.context }, { bound: scopedInputs(snapshot, repository.context, unit).inputs, context: repository.context }) };
     return result;
 }
 //# sourceMappingURL=unit-explain.js.map

@@ -48,6 +48,8 @@
   "dependencies": [],
   "inputPolicy": {
     "nonRuntimePaths": [],
-    "rationale": "Conservative repository inputs"
+    "rationale": "Conservative repository inputs",
+    "scope": "repository",
+    "sharedPaths": []
   }
 }

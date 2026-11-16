@@ -74,6 +74,13 @@ export declare const dependencyShape: import("./unit-shape.js").Shape<{
     require: "implementation" | "contract" | "verification";
     at: "start" | "verify" | "accept";
 }>;
+/** `repository`: every non-excluded file binds every Unit. `declared`: a Unit binds only its own coverage paths, documents and `sharedPaths`. */
+export declare const inputPolicyShape: import("./unit-shape.js").Shape<{
+    nonRuntimePaths: string[];
+    rationale: string;
+    scope: "repository" | "declared";
+    sharedPaths: string[];
+}>;
 export declare const unitSnapshotShape: import("./unit-shape.js").Shape<{
     schemaVersion: 5;
     product: {
@@ -158,11 +165,14 @@ export declare const unitSnapshotShape: import("./unit-shape.js").Shape<{
     inputPolicy: {
         nonRuntimePaths: string[];
         rationale: string;
+        scope: "repository" | "declared";
+        sharedPaths: string[];
     };
 }>;
 export type Unit = Value<typeof unitShape>;
 export type UnitDecision = Value<typeof decisionShape>;
 export type UnitSnapshot = Value<typeof unitSnapshotShape>;
+export type InputPolicy = Value<typeof inputPolicyShape>;
 export type Dependency = Value<typeof dependencyShape>;
 export declare const checkoutShape: import("./unit-shape.js").Shape<{
     target: "commit" | "index" | "working-tree";
@@ -192,7 +202,8 @@ export interface UnitProjection {
     title: string;
     definitionDigest: string;
     compositeDigest: string;
-    coverageDigest: string;
+    coverageDigest: string; /** This Unit's input fingerprint under the snapshot's input policy; `record` binds it. */
+    inputDigest: string;
     declaredState: Unit['implementation']['state'];
     applicability: 'current' | 'unknown' | 'stale';
     implemented: boolean;

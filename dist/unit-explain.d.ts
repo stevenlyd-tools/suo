@@ -1,4 +1,5 @@
-import type { CheckoutContext } from './unit-model.js';
+import { type UnboundImport } from './unit-imports.js';
+import type { CheckoutContext, Unit, UnitSnapshot } from './unit-model.js';
 type Target = CheckoutContext['target'];
 /** `excluded`/`included`: the file exists on both sides but the input policy changed whether it is bound. */
 export interface InputChange {
@@ -26,8 +27,52 @@ export interface UnitExplanation {
         policyChanged: boolean;
         changes: InputChange[];
     } | null;
+    /** Advisory: one-hop imports of mapped source files that are not bound inputs. Never affects applicability. */
+    unboundImports: UnboundImport[];
     notice: string;
 }
+/** Authority snapshots by commit, shared across walks; loading one compiles its TS authority. */
+export type AuthorityCache = Map<string, Promise<UnitSnapshot | null>>;
+/** Newest-first walk over authority-changing first-parent commits (optionally not reachable from `exclude`); returns the oldest commit of the contiguous run still holding this binding. */
+export declare function findBindingCommit(root: string, start: string, unit: Unit, depth: number, cache?: AuthorityCache, exclude?: string): Promise<{
+    commit: string;
+    snapshot: UnitSnapshot;
+} | null>;
+/** A tree that may hold a binding's exact inputs, and the snapshot (policy and mapping) its recorded fingerprint used there. */
+export interface BindingBase {
+    commit: string;
+    snapshot: UnitSnapshot;
+    /** False when the binding entered through a merge whose recorded mapping cannot be confirmed on the merged branch. */
+    mappingKnown: boolean;
+}
+/**
+ * The snapshot holding the mapping a committed binding was recorded with, or null when it cannot be determined. A binding
+ * that a merge commit introduces was recorded on the merged branch: that branch's recording commit must hold the binding
+ * with the same mapping as the merge, else the merge may carry an unreviewed remap and the mapping is unknown.
+ */
+export declare function recordedMapping(root: string, found: {
+    commit: string;
+    snapshot: UnitSnapshot;
+}, unitId: string, depth: number, cache?: AuthorityCache): Promise<UnitSnapshot | null>;
+/**
+ * Trees that may hold the exact inputs of a committed binding, best first: the binding commit and its parent; when the
+ * binding commit is a merge, the same search along the merged branch (where the binding was actually recorded); and when it
+ * changed the input policy (a `rescope` translation), the bases of the binding it translated, fingerprinted with that
+ * binding's own mapping under the translating policy. Lazy, so callers stop at the first exact base. At most `depth` searches.
+ */
+export declare function bindingBaseCandidates(root: string, found: {
+    commit: string;
+    snapshot: UnitSnapshot;
+}, unitId: string, depth: number, cache?: AuthorityCache): AsyncGenerator<BindingBase>;
+/** The Unit's scoped inputs under `s`; a snapshot that predates the Unit is read with the Unit's current mapping. */
+export declare function scopedInputs(s: UnitSnapshot, context: CheckoutContext, unit: Unit): {
+    inputs: {
+        path: string;
+        mode: "100644" | "100755" | "120000" | "160000";
+        digest: string;
+    }[];
+    identity: string;
+};
 /** Read-only review guidance for one binding. Git is the only history source; nothing is stored or rebound. */
 export declare function explainUnit(root: string, target: Target, ref: string, unitId: string, depth?: number): Promise<UnitExplanation>;
 export {};

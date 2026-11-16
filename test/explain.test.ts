@@ -23,7 +23,7 @@ async function record() {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'suo-explain-'))
   git('init', '-q', '-b', 'main'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.test')
-  await createUnitTemplate(root, { schemaVersion: 5, product: { id: 'p', title: 'P' }, units: [unit], decisions: [], containment: [], dependencies: [], inputPolicy: { nonRuntimePaths: [], rationale: 'All inputs' } })
+  await createUnitTemplate(root, { schemaVersion: 5, product: { id: 'p', title: 'P' }, units: [unit], decisions: [], containment: [], dependencies: [], inputPolicy: { nonRuntimePaths: [], rationale: 'All inputs', scope: 'repository', sharedPaths: [] } })
   await writeFile(join(root, '.gitignore'), '.suo/\n'); await writeFile(join(root, 'app.ts'), 'export const app = 1\n'); await writeFile(join(root, 'meta.json'), '{"v":1}\n'); commit('Initial')
 })
 afterEach(() => rm(root, { recursive: true, force: true }))

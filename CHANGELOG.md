@@ -8,6 +8,29 @@ See [release process](https://github.com/stevenlyd-tools/suo/blob/main/docs/rele
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-16
+
+### Added
+
+- Opt-in Unit-scoped input fingerprints. `inputPolicy` gains `scope` (`repository` or `declared`) and `sharedPaths`. Under `declared` a Unit binds only its own coverage paths, documents and the shared paths, minus exclusions, so a change outside them no longer makes it stale. Imports of mapped files are not followed: map or share a helper that carries a Unit's behavior ([#24](https://github.com/stevenlyd-tools/suo/pull/24), [stevenlyd/partners-in-cart#230](https://github.com/stevenlyd/partners-in-cart/issues/230)).
+- `rescope ENVELOPE.json --yes|--dry-run [--depth N]` replaces the input policy and translates each binding from its exactly reproduced base (the working tree when current, else the binding commit, its parent or, for a merge commit, the merged branch where it was recorded), with the Unit's mapping as recorded (for a binding a merge introduced, the merged branch's recording commit, which must match the merge's mapping), and only when the new scope binds nothing the old binding did not; a later unreviewed remap therefore reads stale. Anything else keeps its old fingerprint and reads stale. Under `declared`, negative claims (`not_started`, `gaps`, empty mappings) are not invalidated by new code, and a rescope can turn an empty-coverage binding current; review those claims.
+- Each `inspect`/`check` Unit projection carries its own `inputDigest`; `record` binds it, computed after applying the recorded coverage.
+- `explain` and `record` output an advisory `unboundImports`: one-hop relative and workspace imports of the Unit's mapped source files that are not bound inputs. Nothing is bound or changes applicability; map or share the ones that carry the Unit's behavior.
+- `check` fails on a `sharedPaths` entry that matches no file, as it does on dangling coverage.
+
+### Changed
+
+- `explain` compares the Unit's own scoped inputs. Paths that entered or left the scope through a policy, coverage or document change are `included`/`excluded`. Its base search now also follows a merge commit's merged branch, where the binding was actually recorded, an older run of a binding restored by a revert, and for a binding translated by `rescope` the translated binding's base, so more bases are exact.
+- The generated ontology spells out `scope` and `sharedPaths`. The 0.10 ontology is still read as `scope: "repository", sharedPaths: []`.
+
+### Breaking changes
+
+- The first 0.11 write to a repository replaces `suo/ontology.d.ts` and adds `"scope":"repository","sharedPaths":[]` to the policy; 0.10 clients cannot load the repository afterwards (the writer floor already requires 0.11 writers). API callers that build snapshots must supply both new policy fields, and `UnitProjection.inputDigest` is a new required field for code that constructs projections. Schema 5 and existing bindings are unchanged: the default scope fingerprints the policy exactly as 0.10 did.
+
+### Migration
+
+- None required: repositories stay on the `repository` scope and every binding keeps its applicability. To adopt `declared`, export the snapshot, write `{expectedToken, inputPolicy}` with `scope: "declared"` outside the repository, review `rescope FILE --dry-run`, then run `rescope FILE --yes` and commit the result with regenerated views. Rollback: revert the rescope commit. A `rescope` back to `repository` is accepted but in practice leaves every binding stale, because the whole repository is never vouched for by a declared binding.
+
 ## [0.10.2] - 2026-11-11
 
 ### Changed
