@@ -8,7 +8,7 @@ See [release process](https://github.com/stevenlyd-tools/suo/blob/main/docs/rele
 
 ## [Unreleased]
 
-## [0.11.0] - 2026-11-15
+## [0.11.0] - 2026-11-16
 
 ### Added
 
